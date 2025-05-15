@@ -19,16 +19,16 @@ const themeComponents = {
   ...treeViewCustomizations,
 };
 
-// layout imports
+// layout
 import RootLayout from "./layouts/RootLayout";
 import AuthLayout from "./layouts/AuthLayout";
 import AppLayout from "./layouts/AppLayout";
 
-// public page imports
+// public pages
 import Home from "./pages/Home";
 import Login from "./pages/Login";
 
-// protected page imports
+// protected pages
 import Dashboard from "./pages/Dashboard";
 import Tasks from "./pages/Tasks";
 import TaskDetails from "./pages/TaskDetails";
@@ -39,7 +39,7 @@ import AdminPanel from "./pages/AdminPanel";
 // themed components
 import AppTheme from "./theme/AppTheme";
 
-// protected route
+// route protection
 import ProtectedRoute from "./routes/ProtectedRoute";
 
 const router = createBrowserRouter([
