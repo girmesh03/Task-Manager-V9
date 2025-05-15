@@ -1,15 +1,13 @@
 // react
-import { Outlet, useNavigation } from "react-router";
+import { Outlet } from "react-router";
 import { ToastContainer } from "react-toastify";
 
 // mui
 import { useColorScheme } from "@mui/material/styles";
-import { Box } from "@mui/material";
+import Box from "@mui/material/Box";
 
 const RootLayout = () => {
   const { mode } = useColorScheme();
-  const navigation = useNavigation();
-  const isNavigating = Boolean(navigation.location);
 
   return (
     <Box
@@ -38,7 +36,6 @@ const RootLayout = () => {
         },
       })}
     >
-      {isNavigating && <div>Loading...</div>}
       <Outlet />
       <ToastContainer
         position="bottom-right"

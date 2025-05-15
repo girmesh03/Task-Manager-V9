@@ -23,7 +23,7 @@ const Toolbar = styled(MuiToolbar)({
 });
 
 const HeaderLayout = ({ children, position = "fixed", sx = {} }) => {
-  console.log("HeaderLayout");
+  // console.log("HeaderLayout");
   return (
     <AppBar
       position={position}
