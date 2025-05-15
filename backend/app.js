@@ -29,9 +29,9 @@ app.use(morgan("dev"));
 
 // Routes
 app.use("/api/auth", AuthRoutes);
-// app.use("/api/users", UserRoutes);
-// app.use("/api/departments", DepartmentRoutes);
-// app.use("/api/tasks", TaskRoutes);
+app.use("/api/users", UserRoutes);
+app.use("/api/departments", DepartmentRoutes);
+app.use("/api/tasks", TaskRoutes);
 
 // Error handling
 app.all("*", (req, res, next) => {
