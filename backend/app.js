@@ -1,5 +1,3 @@
-// backend/app.js
-
 import express from "express";
 import cors from "cors";
 import bodyParser from "body-parser";
@@ -14,10 +12,10 @@ import globalErrorHandler from "./errorHandler/ErrorController.js";
 import CustomError from "./errorHandler/CustomError.js";
 
 // Import routes
-// import AuthRoutes from "./routes/AuthRoutes.js";
-// import UserRoutes from "./routes/UserRoutes.js";
-// import DepartmentRoutes from "./routes/DepartmentRoutes.js";
-// import TaskRoutes from "./routes/TaskRoutes.js";
+import AuthRoutes from "./routes/AuthRoutes.js";
+import UserRoutes from "./routes/UserRoutes.js";
+import DepartmentRoutes from "./routes/DepartmentRoutes.js";
+import TaskRoutes from "./routes/TaskRoutes.js";
 
 // Initialize app
 const app = express();
@@ -30,11 +28,7 @@ app.use(cookieParser());
 app.use(morgan("dev"));
 
 // Routes
-app.get("/", (req, res) => {
-  res.send("Hello World!");
-});
-
-// app.use("/api/auth", AuthRoutes);
+app.use("/api/auth", AuthRoutes);
 // app.use("/api/users", UserRoutes);
 // app.use("/api/departments", DepartmentRoutes);
 // app.use("/api/tasks", TaskRoutes);
