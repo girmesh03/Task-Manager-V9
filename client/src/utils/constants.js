@@ -19,6 +19,8 @@ import CarpenterIcon from "@mui/icons-material/Carpenter";
 import EngineeringIcon from "@mui/icons-material/Engineering";
 import CategoryIcon from "@mui/icons-material/Category";
 
+export const drawerWidth = 240;
+
 // statusTypes
 export const statusTypes = [
   { id: 1, label: "Completed", icon: DoneIcon },
@@ -29,19 +31,19 @@ export const statusTypes = [
 
 // priorityTypes
 export const priorityTypes = [
-  { label: "High", icon: HighPriorityIcon },
-  { label: "Medium", icon: MediumPriorityIcon },
-  { label: "Low", icon: LowPriorityIcon },
+  { id: 1, label: "High", icon: HighPriorityIcon },
+  { id: 2, label: "Medium", icon: MediumPriorityIcon },
+  { id: 3, label: "Low", icon: LowPriorityIcon },
 ];
 
 // categoryTypes
 export const categoryTypes = [
-  { label: "Electrical", icon: ElectricalServicesIcon },
-  { label: "HVAC", icon: AcUnitIcon },
-  { label: "Plumbing", icon: PlumbingIcon },
-  { label: "Painting", icon: FormatPaintIcon },
-  { label: "Mechanical", icon: BuildIcon },
-  { label: "Carpentry", icon: CarpenterIcon },
-  { label: "Civil", icon: EngineeringIcon },
-  { label: "Other", icon: CategoryIcon },
+  { id: 1, label: "Electrical", icon: ElectricalServicesIcon },
+  { id: 2, label: "HVAC", icon: AcUnitIcon },
+  { id: 3, label: "Plumbing", icon: PlumbingIcon },
+  { id: 4, label: "Painting", icon: FormatPaintIcon },
+  { id: 5, label: "Mechanical", icon: BuildIcon },
+  { id: 6, label: "Carpentry", icon: CarpenterIcon },
+  { id: 7, label: "Civil", icon: EngineeringIcon },
+  { id: 8, label: "Other", icon: CategoryIcon },
 ];

@@ -107,6 +107,7 @@ taskSchema.virtual("activities", {
   ref: "TaskActivity",
   localField: "_id",
   foreignField: "task",
+  options: { sort: { createdAt: -1 } },
 });
 
 taskSchema.index({ status: 1, department: 1 });
@@ -114,29 +115,6 @@ taskSchema.index({ createdBy: 1 });
 
 // ===================== Plugins =====================
 taskSchema.plugin(mongoosePaginate);
-
-// ===================== Auto-Status Updates =====================
-// taskSchema.pre("save", async function (next) {
-//   if (this.status === "Completed") return next();
-
-//   const now = getFormattedDate(new Date(), 0);
-
-//   // Auto-Pending Priority
-//   if (this.dueDate <= now) {
-//     this.status = "Pending";
-//     return next();
-//   }
-
-//   // Auto-Progress for new activities
-//   if (this.isModified("activities") && this.status === "To Do") {
-//     const activities = await mongoose
-//       .model("TaskActivity")
-//       .find({ task: this._id });
-//     if (activities.length > 0) this.status = "In Progress";
-//   }
-
-//   next();
-// });
 
 // ===================== Auto-Status Updates =====================
 taskSchema.pre("save", async function (next) {

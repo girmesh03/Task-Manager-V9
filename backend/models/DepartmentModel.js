@@ -90,7 +90,6 @@ departmentSchema.virtual("memberCount", {
 
 // ===================== Plugins =====================
 departmentSchema.plugin(mongoosePaginate);
-// departmentSchema.plugin(require("mongoose-autopopulate"));
 
 // ===================== Middleware Updates =====================
 departmentSchema.pre(

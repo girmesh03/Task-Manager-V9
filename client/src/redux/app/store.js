@@ -4,6 +4,7 @@ import storage from "redux-persist/lib/storage";
 import { apiSlice } from "../features/apiSlice";
 import authReducer from "../features/authSlice";
 
+// Transform to safely persist only necessary auth state
 const authTransform = createTransform(
   (inboundState) => ({
     currentUser: inboundState?.currentUser,
@@ -13,6 +14,7 @@ const authTransform = createTransform(
   { whitelist: ["auth"] }
 );
 
+// Persistence config for auth state
 const authPersistConfig = {
   key: "auth",
   storage,
@@ -30,9 +32,14 @@ export const store = configureStore({
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({
       serializableCheck: {
-        ignoredActions: ["persist/PERSIST", "persist/REHYDRATE"],
+        ignoredActions: [
+          "persist/PERSIST",
+          "persist/REHYDRATE",
+          "auth/login/fulfilled",
+        ],
       },
     }).concat(apiSlice.middleware),
+  devTools: import.meta.env.VITE_MODE === "development",
 });
 
 export const persistor = persistStore(store);

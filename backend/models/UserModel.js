@@ -180,7 +180,6 @@ userSchema.pre("save", async function (next) {
 });
 
 userSchema.pre("validate", async function (next) {
-  console.log("Validating user:");
   if (this.role === "SuperAdmin") {
     const existingSuperAdmin = await mongoose.model("User").findOne({
       department: this.department,

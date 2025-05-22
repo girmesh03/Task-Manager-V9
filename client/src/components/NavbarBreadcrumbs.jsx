@@ -23,8 +23,10 @@ const StyledBreadcrumbs = styled(Breadcrumbs)(({ theme }) => ({
 // Static breadcrumb names
 const breadcrumbNameMap = {
   "/dashboard": "Dashboard",
-  "/admin/tasks": "Tasks",
-  "/users/:userId": "User Profile",
+  "/tasks": "Tasks",
+  "/tasks/:taskId/details": "Task Details",
+  "/users": "Users",
+  "/users/:userId/profile": "User Profile",
 };
 
 // Check if a segment is an ID (MongoDB ObjectID)
@@ -79,10 +81,10 @@ const getBreadcrumbs = (pathnames) => {
     // Fetch label from static map, or use the segment itself
     const label = breadcrumbNameMap[builtPath] || segment.replace(/-/g, " ");
 
-    // Skip admin or user
-    if (label === "admin" || label === "user") {
-      continue;
-    }
+    // // Skip admin or user
+    // if (label === "admin" || label === "user") {
+    //   continue;
+    // }
 
     breadcrumbs.push({ name: label, path: builtPath });
   }

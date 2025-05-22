@@ -20,12 +20,12 @@ const setupSuperAdmin = async () => {
   let superAdmin = await User.findOne({ role: "SuperAdmin" });
   if (!superAdmin) {
     superAdmin = await User.create({
-      firstName: "girmachew",
-      lastName: "zewdie",
-      position: "assistant chief engineer",
+      firstName: process.env.DEFAULT_SUPERADMIN_FIRST_NAME,
+      lastName: process.env.DEFAULT_SUPERADMIN_LAST_NAME,
+      position: process.env.DEFAULT_SUPERADMIN_POSITION,
       email: process.env.DEFAULT_SUPERADMIN_EMAIL,
       password: process.env.DEFAULT_SUPERADMIN_PASSWORD,
-      role: "SuperAdmin",
+      role: process.env.DEFAULT_SUPERADMIN_ROLE,
       isVerified: true,
       department: department._id,
     });

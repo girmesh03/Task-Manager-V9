@@ -18,7 +18,13 @@ const notificationSchema = new mongoose.Schema(
     },
     type: {
       type: String,
-      enum: ["TaskAssignment", "TaskCompletion", "StatusUpdate", "SystemAlert"],
+      enum: [
+        "TaskAssignment",
+        "TaskCompletion",
+        "TaskActivity",
+        "StatusUpdate",
+        "SystemAlert",
+      ],
       required: true,
       index: true,
     },

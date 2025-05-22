@@ -1,3 +1,6 @@
+// react
+// import { Navigate } from "react-router";
+
 // mui
 import { styled } from "@mui/material/styles";
 import MuiAvatar from "@mui/material/Avatar";
@@ -46,11 +49,11 @@ const DepartmentMenu = () => {
   const {
     data = {},
     isLoading,
-    isError,
-    error,
+    // isError,
+    // error,
   } = useGetAllDepartmentsQuery(
-    { page: 1, limit: 10 },
-    { refetchOnMountOrArgChange: true }
+    { page: 1, limit: 10 }
+    // { refetchOnMountOrArgChange: true }
   );
 
   const { departments = [] } = data;
@@ -69,7 +72,7 @@ const DepartmentMenu = () => {
       </Toolbar>
     );
 
-  if (isError) return <div>Error: {error?.data?.message}</div>;
+  // if (isError) return <Navigate to="/error" state={{ error }} replace />;
 
   return (
     <Select

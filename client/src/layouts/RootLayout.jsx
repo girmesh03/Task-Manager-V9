@@ -1,14 +1,12 @@
-// react
+import { Suspense } from "react";
 import { Outlet } from "react-router";
-import { ToastContainer } from "react-toastify";
 
-// mui
-import { useColorScheme } from "@mui/material/styles";
 import Box from "@mui/material/Box";
 
-const RootLayout = () => {
-  const { mode } = useColorScheme();
+import { LoadingFallback } from "../components/LoadingFallback";
 
+const RootLayout = () => {
+  console.log("root layout");
   return (
     <Box
       sx={(theme) => ({
@@ -36,20 +34,9 @@ const RootLayout = () => {
         },
       })}
     >
-      <Outlet />
-      <ToastContainer
-        position="bottom-right"
-        autoClose={3000}
-        hideProgressBar={false}
-        newestOnTop={true}
-        closeOnClick
-        rtl={false}
-        pauseOnFocusLoss
-        draggable
-        pauseOnHover
-        theme={mode === "system" ? "dark" : mode}
-        limit={3}
-      />
+      <Suspense fallback={<LoadingFallback />}>
+        <Outlet />
+      </Suspense>
     </Box>
   );
 };

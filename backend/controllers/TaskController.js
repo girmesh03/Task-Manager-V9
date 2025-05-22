@@ -26,16 +26,7 @@ const createTask = asyncHandler(async (req, res, next) => {
       throw new CustomError("At least one user must be assigned", 400);
     }
 
-    // 2. Validate creator and department
-    const creator = await User.findById(creatorId).session(session);
-    const department = await Department.findById(departmentId).session(session);
-
-    if (!department) throw new CustomError("Department not found", 404);
-    if (!creator?.department.equals(departmentId)) {
-      throw new CustomError("Creator not in department", 400);
-    }
-
-    // 3. Validate assigned users
+    // 2. Validate assigned users
     const assignedUsers = await User.find({ _id: { $in: assignedTo } }).session(
       session
     );
@@ -43,12 +34,12 @@ const createTask = asyncHandler(async (req, res, next) => {
       throw new CustomError("Invalid assigned users", 404);
     }
 
-    const invalidUsers = assignedUsers.filter(
-      (u) => !u.department.equals(departmentId)
-    );
-    if (invalidUsers.length > 0) {
-      throw new CustomError("Assigned users must belong to department", 400);
-    }
+    // const invalidUsers = assignedUsers.filter(
+    //   (u) => !u.department.equals(departmentId)
+    // );
+    // if (invalidUsers.length > 0) {
+    //   throw new CustomError("Assigned users must belong to department", 400);
+    // }
 
     // 4. Create task
     const newTask = await Task.create(
@@ -110,20 +101,15 @@ const getAllTasks = asyncHandler(async (req, res, next) => {
     const { departmentId } = req.params;
     const userId = req.user._id;
     const userRole = req.user.role;
-    const { page = 1, limit = 10, sort = "-createdAt", status } = req.query;
 
-    // 1. Validate department access
-    const user = await User.findById(userId);
-    if (!user.department.equals(departmentId)) {
-      throw new CustomError("Department access denied", 403);
-    }
+    const { page = 1, limit = 10, status, sort = "-createdAt" } = req.query;
 
-    // 2. Build query
+    // 1. Build query
     const query = { department: departmentId };
     if (userRole === "User") query.assignedTo = { $in: [userId] };
     if (status) query.status = status;
 
-    // 3. Execute paginated query
+    // 2. Execute paginated query
     const options = {
       page: parseInt(page),
       limit: parseInt(limit),
@@ -131,11 +117,11 @@ const getAllTasks = asyncHandler(async (req, res, next) => {
       populate: [
         {
           path: "createdBy",
-          select: "firstName lastName fullName profilePicture",
+          select: "firstName lastName fullName email profilePicture",
         },
         {
           path: "assignedTo",
-          select: "firstName lastName fullName profilePicture",
+          select: "firstName lastName fullName email profilePicture",
         },
         { path: "department", select: "name" },
       ],
@@ -165,34 +151,56 @@ const getAllTasks = asyncHandler(async (req, res, next) => {
 const getTaskById = asyncHandler(async (req, res, next) => {
   try {
     const { departmentId, taskId } = req.params;
-    const userId = req.user._id;
+    // const userId = req.user._id;
     const userRole = req.user.role;
+    // const isSuperAdmin = req.user.role === "SuperAdmin";
 
     // 1. Validate department access
-    const user = await User.findById(userId);
-    if (!user.department.equals(departmentId)) {
-      throw new CustomError("Department access denied", 403);
-    }
+    // const user = await User.findById(userId);
+    // if (!isSuperAdmin && !user.department.equals(departmentId)) {
+    //   throw new CustomError("Department access denied", 403);
+    // }
 
-    // 2. Fetch task
-    const task = await Task.findOne({ _id: taskId, department: departmentId })
-      .populate("createdBy", "firstName lastName")
-      .populate("assignedTo", "firstName lastName")
-      .populate("activities");
+    // 2. Find task with full population
+    const task = await Task.findOne({
+      _id: taskId,
+      department: departmentId,
+    })
+      .populate({
+        path: "createdBy",
+        select: "firstName lastName fullName email profilePicture",
+      })
+      .populate({
+        path: "assignedTo",
+        select: "firstName lastName fullName email profilePicture",
+      })
+      .populate({
+        path: "department",
+        select: "name description",
+      })
+      .populate({
+        path: "activities",
+        populate: {
+          path: "performedBy",
+          select: "firstName lastName fullName email profilePicture",
+        },
+        options: { sort: { createdAt: -1 } }, // Sort activities
+      });
 
     if (!task) throw new CustomError("Task not found", 404);
 
-    // 3. User access check
-    if (
-      userRole === "User" &&
-      !task.assignedTo.some((u) => u._id.equals(userId))
-    ) {
-      throw new CustomError("Task access denied", 403);
+    // 3. Authorization check for regular users
+    if (userRole === "User") {
+      const isAssigned = task.assignedTo.some((user) =>
+        user._id.equals(req.user._id)
+      );
+      if (!isAssigned) throw new CustomError("Task access denied", 403);
     }
 
     res.status(200).json({
       success: true,
       task,
+      activities: task.activities || [],
       message: "Task retrieved successfully",
     });
   } catch (error) {
@@ -210,10 +218,18 @@ const updateTaskById = asyncHandler(async (req, res, next) => {
   try {
     const { departmentId, taskId } = req.params;
     const userId = req.user._id;
-    const { title, description, location, dueDate, priority, assignedTo } =
-      req.body;
+    const {
+      title,
+      description,
+      location,
+      dueDate,
+      priority,
+      assignedTo,
+      status,
+    } = req.body;
 
     // 1. Validate department access
+    // Even super admin can't update tasks in other departments
     const user = await User.findById(userId).session(session);
     if (!user.department.equals(departmentId)) {
       throw new CustomError("Department access denied", 403);
@@ -260,16 +276,24 @@ const updateTaskById = asyncHandler(async (req, res, next) => {
       }));
 
       // Create activity
-      await TaskActivity.create(
-        [
-          {
-            task: taskId,
-            performedBy: userId,
-            description: `Added ${newAssignees.length} new assignees`,
-          },
-        ],
-        { session }
-      );
+      if (newAssignees.length > 0) {
+        await TaskActivity.create(
+          [
+            {
+              task: taskId,
+              performedBy: userId,
+              description: `Added ${newAssignees.length} new assignees`,
+              // type: "AddAssignees",
+              statusChange: {
+                from: task.status,
+                to: status || task.status,
+              },
+              // attachments: [],
+            },
+          ],
+          { session }
+        );
+      }
     }
 
     // 4. Save notifications
@@ -289,13 +313,33 @@ const updateTaskById = asyncHandler(async (req, res, next) => {
     await session.commitTransaction();
 
     const response = await Task.findById(updatedTask._id)
-      .populate("assignedTo", "firstName lastName fullName profilePicture")
-      .populate("createdBy", "firstName lastName fullName profilePicture")
-      .populate("department", "name");
+      .populate({
+        path: "createdBy",
+        select: "firstName lastName fullName email profilePicture",
+      })
+      .populate({
+        path: "assignedTo",
+        select: "firstName lastName fullName email profilePicture",
+      })
+      .populate({
+        path: "department",
+        select: "name description",
+      })
+      .populate({
+        path: "activities",
+        populate: {
+          path: "performedBy",
+          select: "firstName lastName fullName email profilePicture",
+        },
+        options: { sort: { createdAt: -1 } }, // Sort activities
+      });
 
     res.status(200).json({
       success: true,
-      task: response,
+      task: {
+        ...response.toObject(),
+        activities: task.activities || [], // Ensure array exists
+      },
       message: "Task updated successfully",
     });
   } catch (error) {
@@ -324,7 +368,7 @@ const deleteTaskById = asyncHandler(async (req, res, next) => {
     }).session(session);
     if (!task) throw new CustomError("Task not found", 404);
 
-    if (req.user.role === "Manager" && !task.createdBy.equals(userId)) {
+    if (!task.createdBy.equals(userId)) {
       throw new CustomError("Delete permission denied", 403);
     }
 
@@ -354,17 +398,19 @@ const createTaskActivity = asyncHandler(async (req, res, next) => {
   try {
     const { taskId } = req.params;
     const userId = req.user._id;
+    const userRole = req.user.role;
     const { description, statusChange, attachments } = req.body;
 
-    if (!attachments || !Array.isArray(attachments)) {
-      throw new CustomError("Attachments must be an array", 400);
+    // 1. Validate permissions, task existence and permissions
+    const user = await User.findById(userId);
+    if (userRole !== "SuperAdmin" && !user.department.equals(userId)) {
+      throw new CustomError("Department access denied", 403);
     }
 
-    // 1. Validate task existence and permissions
     const task = await Task.findOne({ _id: taskId })
       .session(session)
-      .populate("createdBy", "department")
-      .populate("assignedTo", "department");
+      .populate("createdBy", "_id")
+      .populate("assignedTo", "_id");
 
     if (!task) throw new CustomError("Task not found", 404);
 
@@ -375,57 +421,62 @@ const createTaskActivity = asyncHandler(async (req, res, next) => {
       throw new CustomError("Not authorized to add activities", 403);
     }
 
-    // 4. Create activity
-    const activity = await TaskActivity.create(
+    // 3. Create activity
+    const [activity] = await TaskActivity.create(
       [
         {
           task: taskId,
           performedBy: userId,
           description,
-          statusChange,
-          attachments,
+          statusChange: statusChange
+            ? {
+                from: task.status,
+                to: statusChange,
+              }
+            : undefined,
+          attachments: attachments || [],
         },
       ],
       { session }
     );
 
-    // 5. Auto-update task status through middleware
-    const updatedTask = await Task.findById(taskId)
-      .session(session)
-      .populate("activities");
+    // 4. Auto-update task status through middleware
+    await task.save({ session });
 
-    // 6. Check dueDate expiration
-    const now = getFormattedDate(new Date(), 0);
-    if (updatedTask.dueDate <= now) {
-      updatedTask.status = "Pending";
-      await updatedTask.save({ session });
-    }
+    // 5. Get notification recipients (creator + assigned - performer)
+    const recipients = [
+      task.createdBy._id,
+      ...task.assignedTo.map((u) => u._id),
+    ].filter((id) => !id.equals(userId));
 
-    // 7. when a new activity is added, the creator should be notified if he is not the one who added the activity
-    if (!isCreator) {
-      const creator = updatedTask.createdBy;
-      const notification = {
-        user: creator._id,
-        message: `New activity on task: ${updatedTask.title}`,
+    // Remove duplicates using Set
+    const uniqueRecipients = [
+      ...new Set(recipients.map((id) => id.toString())),
+    ].map((id) => new mongoose.Types.ObjectId(id));
+
+    // 6. Create notifications
+    if (uniqueRecipients.length > 0) {
+      const notifications = uniqueRecipients.map((userId) => ({
+        user: userId,
+        message: `New activity on task: ${task.title}`,
         type: "TaskActivity",
         task: taskId,
         linkedDocument: {
           _id: taskId,
           docType: "Task",
-          department: updatedTask.department,
+          department: task.department,
         },
-      };
+      }));
 
-      await Notification.create([notification], { session });
+      await Notification.insertMany(notifications, { session });
     }
 
     await session.commitTransaction();
 
     res.status(201).json({
       success: true,
-      activity: activity[0],
-      taskStatus: updatedTask.status,
-      message: "Task activity created successfully",
+      activity,
+      message: "Activity created with notifications",
     });
   } catch (error) {
     await session.abortTransaction();
@@ -442,46 +493,63 @@ const getTaskActivities = asyncHandler(async (req, res, next) => {
   try {
     const { taskId } = req.params;
     const userId = req.user._id;
+    const userRole = req.user.role;
 
-    // 1. Validate task access
-    const task = await Task.findOne({ _id: taskId })
+    // 1. Validate department access, task existence and permissions
+    const user = await User.findById(userId);
+    if (userRole !== "SuperAdmin" && !user.department.equals(userId)) {
+      throw new CustomError("Department access denied", 403);
+    }
+
+    const task = await Task.findById(taskId)
       .populate("createdBy", "_id")
       .populate("assignedTo", "_id");
 
     if (!task) throw new CustomError("Task not found", 404);
 
+    // 2. Verify access (SuperAdmin bypass)
     const isAllowed =
+      userRole === "SuperAdmin" ||
       task.createdBy._id.equals(userId) ||
       task.assignedTo.some((u) => u._id.equals(userId));
 
     if (!isAllowed) throw new CustomError("Access denied", 403);
 
-    // 2. Get activities with pagination
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
+    // 3. Pagination configuration
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 10));
 
-    const options = {
-      page,
-      limit,
-      sort: "-createdAt",
-      populate: {
-        path: "performedBy",
-        select: "firstName lastName profilePicture",
-      },
-    };
-
-    const activities = await TaskActivity.paginate({ task: taskId }, options);
+    // 4. Query activities with population
+    const results = await TaskActivity.paginate(
+      { task: taskId },
+      {
+        page,
+        limit,
+        sort: "-createdAt",
+        populate: {
+          path: "performedBy",
+          select: "firstName lastName profilePicture",
+          transform: (doc) => ({
+            _id: doc._id,
+            firstName: doc.firstName,
+            lastName: doc.lastName,
+            fullName: doc.fullName, // Requires virtual in User model
+            profilePicture: doc.profilePicture,
+          }),
+        },
+      }
+    );
 
     res.status(200).json({
       success: true,
       pagination: {
-        page: activities.page,
-        limit: activities.limit,
-        totalPages: activities.totalPages,
-        totalItems: activities.totalDocs,
+        page: results.page,
+        limit: results.limit,
+        totalPages: results.totalPages,
+        totalItems: results.totalDocs,
       },
-      activities: activities.docs,
-      message: "Task activities retrieved successfully",
+      activities: results.docs,
+      message: "Activities retrieved successfully",
     });
   } catch (error) {
     next(error);
@@ -497,56 +565,75 @@ const deleteTaskActivity = asyncHandler(async (req, res, next) => {
 
   try {
     const { taskId, activityId } = req.params;
-    const userId = req.user._id;
-    const userRole = req.user.role;
+    const { _id: userId, role: userRole } = req.user;
 
-    // 1. Validate activity existence and permissions
+    // 1. Validate department access, activity existence with task relationship
+    const user = await User.findById(userId);
+    if (userRole !== "SuperAdmin" && !user.department.equals(userId)) {
+      throw new CustomError("Department access denied", 403);
+    }
+
     const activity = await TaskActivity.findById(activityId)
-      .populate("task")
+      .populate({
+        path: "task",
+        select: "department status activities dueDate",
+        match: { _id: taskId },
+      })
       .session(session);
 
-    if (!activity) throw new CustomError("Activity not found", 404);
+    if (!activity?.task) throw new CustomError("Activity not found", 404);
 
-    // 2. Verify user is creator or has privileges
+    // 2. Prevent deletion for completed tasks
+    if (activity.task.status === "Completed") {
+      throw new CustomError(
+        "Cannot delete activities for completed tasks",
+        400
+      );
+    }
+
+    // 3. Authorization checks
     const isCreator = activity.performedBy.equals(userId);
     const isPrivileged = ["SuperAdmin", "Admin", "Manager"].includes(userRole);
 
     if (!isCreator && !isPrivileged) {
-      throw new CustomError("Not authorized to delete this activity", 403);
+      throw new CustomError("Delete permission denied", 403);
     }
 
-    // 3. Verify task department access
-    const user = await User.findById(userId).session(session);
-    if (!user.department.equals(activity.task.department)) {
-      throw new CustomError("Cross-department operation not allowed", 403);
+    // 4. Department validation (skip for SuperAdmin)
+    if (userRole !== "SuperAdmin") {
+      const user = await User.findById(userId)
+        .select("department")
+        .session(session);
+
+      if (!user.department.equals(activity.task.department)) {
+        throw new CustomError("Cross-department operation denied", 403);
+      }
     }
 
-    // 4. Delete the activity
+    // 5. Delete activity
     await activity.deleteOne({ session });
 
-    // 5. Recalculate task status
+    // 6. Recalculate task status
     const task = await Task.findById(taskId)
       .session(session)
-      .populate("activities");
+      .populate({
+        path: "activities",
+        match: { _id: { $ne: activityId } }, // Exclude deleted activity
+      });
 
-    // If deleted activity was the last status change
-    if (activity.statusChange) {
-      const statusActivities = task.activities.filter(
-        (a) => a.statusChange?.to === task.status
-      );
+    const relevantActivities = task.activities.filter(
+      (a) => a.statusChange?.to === task.status
+    );
 
-      if (statusActivities.length === 0) {
-        // Revert to previous status or default rules
-        const now = new Date();
-
-        if (task.dueDate <= now) {
-          task.status = "Pending";
-        } else {
-          task.status = task.activities.length > 0 ? "In Progress" : "To Do";
-        }
-
-        await task.save({ session });
-      }
+    if (relevantActivities.length === 0) {
+      const now = new Date();
+      task.status =
+        task.dueDate <= now
+          ? "Pending"
+          : task.activities.length > 0
+          ? "In Progress"
+          : "To Do";
+      await task.save({ session });
     }
 
     await session.commitTransaction();

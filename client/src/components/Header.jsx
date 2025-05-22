@@ -1,21 +1,17 @@
-// react
-// import { memo } from "react";
+import { memo } from "react";
 
-// mui
 import Stack from "@mui/material/Stack";
 import NotificationsRoundedIcon from "@mui/icons-material/NotificationsRounded";
 
-// layout
 import HeaderLayout from "../layouts/HeaderLayout";
 
-// components
 import NavbarBreadcrumbs from "./NavbarBreadcrumbs";
 // import Search from "./Search";
 // import CustomDatePicker from "./CustomDatePicker";
 import MenuButton from "./MenuButton";
 import ColorModeIconDropdown from "./ColorModeIconDropdown";
 
-const Header = () => {
+const Header = memo(() => {
   console.log("Header");
   return (
     <HeaderLayout
@@ -33,6 +29,6 @@ const Header = () => {
       </Stack>
     </HeaderLayout>
   );
-};
+});
 
 export default Header;
