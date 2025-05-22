@@ -11,16 +11,22 @@ import {
   deleteTaskActivity,
 } from "../controllers/TaskController.js";
 
-import { verifyJWT, authorizeRoles } from "../middlewares/authMiddleware.js";
+import {
+  verifyJWT,
+  authorizeRoles,
+  verifyDepartmentAccess,
+} from "../middlewares/authMiddleware.js";
 
 const router = express.Router();
 
 router.use(verifyJWT);
+// router.use(verifyDepartmentAccess);
 
 // Create Task in a Department
 router.post(
   "/department/:departmentId",
   authorizeRoles("SuperAdmin", "Admin", "Manager"),
+  verifyDepartmentAccess,
   createTask
 );
 
@@ -28,6 +34,7 @@ router.post(
 router.get(
   "/department/:departmentId",
   authorizeRoles("SuperAdmin", "Admin", "Manager", "User"),
+  // verifyDepartmentAccess,
   getAllTasks
 );
 
@@ -35,6 +42,7 @@ router.get(
 router.get(
   "/department/:departmentId/task/:taskId",
   authorizeRoles("SuperAdmin", "Admin", "Manager", "User"),
+  // verifyDepartmentAccess,
   getTaskById
 );
 
@@ -42,6 +50,7 @@ router.get(
 router.put(
   "/department/:departmentId/task/:taskId",
   authorizeRoles("SuperAdmin", "Admin", "Manager"),
+  verifyDepartmentAccess,
   updateTaskById
 );
 
@@ -49,6 +58,7 @@ router.put(
 router.delete(
   "/department/:departmentId/task/:taskId",
   authorizeRoles("SuperAdmin", "Admin", "Manager"),
+  verifyDepartmentAccess,
   deleteTaskById
 );
 
@@ -56,6 +66,7 @@ router.delete(
 router.post(
   "/:taskId/activities",
   authorizeRoles("SuperAdmin", "Admin", "Manager", "User"),
+  verifyDepartmentAccess,
   createTaskActivity
 );
 
@@ -70,6 +81,7 @@ router.get(
 router.delete(
   "/:taskId/activities/:activityId",
   authorizeRoles("SuperAdmin", "Admin", "Manager", "User"),
+  verifyDepartmentAccess,
   deleteTaskActivity
 );
 

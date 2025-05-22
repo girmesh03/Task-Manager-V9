@@ -1,5 +1,3 @@
-// backend/server.js
-
 import dotenv from "dotenv";
 dotenv.config();
 
@@ -11,7 +9,8 @@ import connectDB from "./config/db.js";
 import corsOptions from "./config/corsOptions.js";
 import setupSocketIO from "./socket.js";
 
-// import initializeSuperAdmin from "./mock/initializeSuperAdmin.js";
+import User from "./models/UserModel.js";
+import initializeSuperAdmin from "./mock/initializeSuperAdmin.js";
 
 // Get port from environment
 const PORT = process.env.PORT || 5000;
@@ -29,7 +28,11 @@ connectDB();
 mongoose.connection.once("open", async () => {
   console.log("Connected to MongoDB");
 
-  // await initializeSuperAdmin();
+  const superAdmin = await User.findOne({ role: "SuperAdmin" });
+  if (!superAdmin) {
+    console.log("Super Admin not found, initializing...");
+    await initializeSuperAdmin();
+  }
 
   server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 });

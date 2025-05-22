@@ -91,7 +91,6 @@ const taskActivitySchema = new mongoose.Schema(
 
 // ===================== Middleware =====================
 taskActivitySchema.pre("save", async function (next) {
-  console.log("taskActivitySchema pre save");
   const session = this.$session();
   const task = await mongoose
     .model("Task")

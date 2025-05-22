@@ -29,13 +29,17 @@ router.get(
 );
 
 // Get a user by ID in a department
-// TODO: who can access this endpoint?
-router.get("/department/:departmentId/user/:userId", getUserById);
+// TODO: authorizeRoles:who can access this endpoint?
+router.get(
+  "/department/:departmentId/user/:userId",
+  authorizeRoles("SuperAdmin", "Admin", "Manager", "User"),
+  getUserById
+);
 
 // Update a user by ID in a department
 router.put(
   "/department/:departmentId/user/:userId",
-  authorizeRoles("SuperAdmin", "Admin"),
+  authorizeRoles("SuperAdmin", "Admin", "User"),
   updateUserById
 );
 

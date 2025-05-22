@@ -110,8 +110,14 @@ const getAllUsers = asyncHandler(async (req, res, next) => {
   const requester = req.user;
   const filter = { isActive: true };
 
+  // Validate department
+  const department = await Department.findById(departmentId);
+  if (!department) {
+    return next(new CustomError("Department not found", 404));
+  }
+
   // Apply filters
-  filter.department = departmentId;
+  filter.department = departmentId; // Initially the requested departmentId
   if (role) filter.role = role;
 
   // Department filter for non-superadmins
@@ -122,13 +128,14 @@ const getAllUsers = asyncHandler(async (req, res, next) => {
       filter.role = { $nin: ["SuperAdmin", "Admin"] };
     }
   }
+
   // Pagination and sorting
   const options = {
     page: parseInt(page),
     limit: parseInt(limit),
     populate: [
       { path: "department", select: "name" },
-      { path: "managedDepartment", select: "name" },
+      { path: "managedDepartment", select: "name" }, // TODO: managedDepartment is null on the response
     ],
     sort: "-createdAt",
   };
@@ -137,13 +144,13 @@ const getAllUsers = asyncHandler(async (req, res, next) => {
 
   res.status(200).json({
     success: true,
-    users: result.docs,
     pagination: {
       page: result.page,
       limit: result.limit,
       total: result.totalDocs,
       totalPages: result.totalPages,
     },
+    users: result.docs,
     message: "Users retrieved successfully",
   });
 });
@@ -156,9 +163,10 @@ const getUserById = asyncHandler(async (req, res, next) => {
   const requester = req.user;
 
   try {
-    const user = await User.findOne({ _id: userId, department: departmentId })
-      // .select("-password -verificationToken -resetPasswordToken")
-      .populate("department managedDepartment");
+    const user = await User.findOne({
+      _id: userId,
+      department: departmentId,
+    }).populate("department managedDepartment");
 
     if (!user) {
       throw new CustomError("User not found", 404);
@@ -234,7 +242,7 @@ const updateUserById = asyncHandler(async (req, res, next) => {
     const updatedUser = await User.findByIdAndUpdate(userId, updates, {
       new: true,
       session,
-    }).select("-password -verificationToken -resetPasswordToken"); // TODO: -password etc handled by mongoose schema
+    });
 
     await session.commitTransaction();
     res.status(200).json({
