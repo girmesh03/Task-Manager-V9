@@ -1,8 +1,6 @@
-// react import
-import { useMemo } from "react";
+import { memo, useMemo } from "react";
 import { Link, useLocation } from "react-router";
 
-// mui import
 import List from "@mui/material/List";
 import ListItem from "@mui/material/ListItem";
 import ListItemButton from "@mui/material/ListItemButton";
@@ -15,8 +13,8 @@ import AssignmentRoundedIcon from "@mui/icons-material/AssignmentRounded";
 // import PersonRoundedIcon from "@mui/icons-material/PersonRounded";
 // import InfoRoundedIcon from "@mui/icons-material/InfoRounded";
 
-const MenuContent = () => {
-  // console.log("MenuContent useAuth");
+const MenuContent = memo(() => {
+  // console.log("MenuContent");
   const route = useLocation().pathname;
 
   const routesListItems = useMemo(
@@ -36,17 +34,13 @@ const MenuContent = () => {
   return (
     <List dense>
       {routesListItems.map((item, index) => (
-        <ListItem
-          key={index}
-          disablePadding
-          sx={{
-            mb: 0.5,
-          }}
-        >
+        <ListItem key={index} disablePadding sx={{ mb: 0.5 }}>
           <ListItemButton
             component={Link}
             to={item.path}
-            selected={route === routesListItems[index].path.toLowerCase()}
+            selected={
+              route === item.path || `/${route?.split("/")[1]}` === item.path
+            }
             sx={{
               "&.MuiListItemButton-root.Mui-selected": {
                 backgroundColor: (theme) => theme.palette.primary.main,
@@ -63,6 +57,6 @@ const MenuContent = () => {
       ))}
     </List>
   );
-};
+});
 
 export default MenuContent;

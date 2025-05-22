@@ -1,9 +1,7 @@
-// react
-import { useState } from "react";
+import { useState, Suspense } from "react";
 import { Link, Outlet, useLocation } from "react-router";
 import { toast } from "react-toastify";
 
-// mui
 import Box from "@mui/material/Box";
 import Stack from "@mui/material/Stack";
 import useTheme from "@mui/material/styles/useTheme";
@@ -17,17 +15,15 @@ import PersonIcon from "@mui/icons-material/Person";
 import LogoutIcon from "@mui/icons-material/Logout";
 import LoginIcon from "@mui/icons-material/Login";
 
-// hooks
 import useAuth from "../hooks/useAuth";
 
-// redux
 import { useSelector, useDispatch } from "react-redux";
 import { setLogout, selectIsLoading } from "../redux/features/authSlice";
 
-// components
 import HeaderLayout from "./HeaderLayout";
 import CustomLogo from "../components/CustomLogo";
 import ColorModeIconDropdown from "../components/ColorModeIconDropdown";
+import { LoadingFallback } from "../components/LoadingFallback";
 
 const AuthLayout = () => {
   console.log("AuthLayout");
@@ -132,7 +128,9 @@ const AuthLayout = () => {
         </Stack>
       </HeaderLayout>
       <Stack direction="column" sx={{ flexGrow: 1, overflow: "auto" }}>
-        <Outlet />
+        <Suspense fallback={<LoadingFallback />}>
+          <Outlet />
+        </Suspense>
       </Stack>
     </Box>
   );

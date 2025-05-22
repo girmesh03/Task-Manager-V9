@@ -1,10 +1,9 @@
-// react
+import { lazy } from "react";
 import { createBrowserRouter, RouterProvider } from "react-router";
-
-// mui
+import { ToastContainer } from "react-toastify";
 import CssBaseline from "@mui/material/CssBaseline";
+import "react-toastify/dist/ReactToastify.css";
 
-// theme customizations
 import {
   chartsCustomizations,
   dataGridCustomizations,
@@ -19,28 +18,23 @@ const themeComponents = {
   ...treeViewCustomizations,
 };
 
-// layout
-import RootLayout from "./layouts/RootLayout";
-import AuthLayout from "./layouts/AuthLayout";
-import AppLayout from "./layouts/AppLayout";
-
-// public pages
-import Home from "./pages/Home";
-import Login from "./pages/Login";
-
-// protected pages
-import Dashboard from "./pages/Dashboard";
-import Tasks from "./pages/Tasks";
-import TaskDetails from "./pages/TaskDetails";
-import Users from "./pages/Users";
-import UserProfile from "./pages/UserProfile";
-import AdminPanel from "./pages/AdminPanel";
-
-// themed components
 import AppTheme from "./theme/AppTheme";
+import RootLayout from "./layouts/RootLayout";
 
-// route protection
-import ProtectedRoute from "./routes/ProtectedRoute";
+const AuthLayout = lazy(() => import("./layouts/AuthLayout"));
+const AppLayout = lazy(() => import("./layouts/AppLayout"));
+const ProtectedRoute = lazy(() => import("./routes/ProtectedRoute"));
+
+const Home = lazy(() => import("./pages/Home"));
+const Login = lazy(() => import("./pages/Login"));
+const Dashboard = lazy(() => import("./pages/Dashboard"));
+const Tasks = lazy(() => import("./pages/Tasks"));
+const TaskDetails = lazy(() => import("./pages/TaskDetails"));
+const Users = lazy(() => import("./pages/Users"));
+const UserProfile = lazy(() => import("./pages/UserProfile"));
+const AdminPanel = lazy(() => import("./pages/AdminPanel"));
+const ErrorPage = lazy(() => import("./pages/ErrorPage"));
+const NotFound = lazy(() => import("./pages/NotFound"));
 
 const router = createBrowserRouter([
   {
@@ -70,15 +64,46 @@ const router = createBrowserRouter([
           },
         ],
       },
+      {
+        path: "error",
+        Component: ErrorPage,
+      },
+      {
+        path: "*",
+        Component: NotFound,
+      },
     ],
   },
 ]);
 
 const App = () => {
+  const theme = localStorage.getItem("mui-mode") || "dark";
+
   return (
     <AppTheme themeComponents={themeComponents}>
       <CssBaseline enableColorScheme />
+
+      {/* Router */}
       <RouterProvider router={router} />
+
+      {/* Global Toast Container */}
+      <ToastContainer
+        position="bottom-right"
+        autoClose={5000}
+        hideProgressBar={false}
+        newestOnTop
+        closeOnClick
+        rtl={false}
+        pauseOnFocusLoss
+        draggable
+        pauseOnHover
+        theme={theme === "system" ? "dark" : "light"}
+        toastStyle={{
+          fontFamily: "'Inter', sans-serif",
+          fontSize: "0.875rem",
+          borderRadius: "4px",
+        }}
+      />
     </AppTheme>
   );
 };

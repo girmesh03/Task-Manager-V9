@@ -1,10 +1,8 @@
-// react
 import { memo } from "react";
 import { useNavigate } from "react-router";
 import { toast } from "react-toastify";
 import PropTypes from "prop-types";
 
-// mui
 import { styled } from "@mui/material/styles";
 import MuiDrawer, { drawerClasses } from "@mui/material/Drawer";
 import Avatar from "@mui/material/Avatar";
@@ -16,20 +14,16 @@ import Typography from "@mui/material/Typography";
 import LogoutRoundedIcon from "@mui/icons-material/LogoutRounded";
 import NotificationsRoundedIcon from "@mui/icons-material/NotificationsRounded";
 
-// redux
 import { useSelector, useDispatch } from "react-redux";
 import { setLogout, selectIsLoading } from "../redux/features/authSlice";
 
-// hooks
 import useAuth from "../hooks/useAuth";
 
-// components
 import DepartmentMenu from "./DepartmentMenu";
 import MenuButton from "./MenuButton";
 import MenuContent from "./MenuContent";
 
-// constants
-const drawerWidth = 240;
+import {drawerWidth} from "../utils/constants";
 
 // styled components
 const Drawer = styled(MuiDrawer)({

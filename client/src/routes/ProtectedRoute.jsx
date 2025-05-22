@@ -1,12 +1,13 @@
-// react
+import { Suspense } from "react";
 import { Navigate, Outlet, useLocation } from "react-router";
 
-// redux
 import { useSelector } from "react-redux";
 import { selectIsAuthenticated } from "../redux/features/authSlice";
 
+import { LoadingFallback } from "../components/LoadingFallback";
+
 const ProtectedRoute = () => {
-  console.log("ProtectedRoute");
+  // console.log("ProtectedRoute");
   const location = useLocation();
   const isAuthenticated = useSelector(selectIsAuthenticated);
 
@@ -14,7 +15,11 @@ const ProtectedRoute = () => {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  return <Outlet />;
+  return (
+    <Suspense fallback={<LoadingFallback />}>
+      <Outlet />
+    </Suspense>
+  );
 };
 
 export default ProtectedRoute;

@@ -1,5 +1,6 @@
-import axios from "axios";
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
+import { toast } from "react-toastify";
+import axios from "axios";
 
 const SERVER_URL = import.meta.env.VITE_BACKEND_SERVER_URL;
 
@@ -8,28 +9,43 @@ export const makeRequest = axios.create({
   withCredentials: true,
 });
 
-// Async thunk for setting credentials (logging in)
+// Async thunks with proper error handling and toasts
 export const setCredentials = createAsyncThunk(
   "auth/login",
   async (userData, { rejectWithValue }) => {
     try {
       const { data } = await makeRequest.post("/auth/login", userData);
+      toast.success("Login successful!", {
+        position: "bottom-right",
+        autoClose: 3000,
+      });
       return data;
     } catch (error) {
-      return rejectWithValue(error.response.data);
+      toast.error(error.response?.data?.message || "Login failed", {
+        position: "bottom-right",
+        autoClose: 5000,
+      });
+      return rejectWithValue(error.response?.data);
     }
   }
 );
 
-// Async thunk for logging out
 export const setLogout = createAsyncThunk(
   "auth/logout",
   async (_, { rejectWithValue }) => {
     try {
-      const { data } = await makeRequest.post("/auth/logout");
-      return data;
+      await makeRequest.post("/auth/logout");
+      toast.success("Logged out successfully", {
+        position: "bottom-right",
+        autoClose: 3000,
+      });
+      return {};
     } catch (error) {
-      return rejectWithValue(error.response.data);
+      toast.error("Failed to logout properly", {
+        position: "bottom-right",
+        autoClose: 5000,
+      });
+      return rejectWithValue(error.response?.data);
     }
   }
 );
@@ -40,6 +56,7 @@ const initialState = {
   isAuthenticated: false,
   isLoading: false,
   error: null,
+  tokenVersion: 0,
 };
 
 const authSlice = createSlice({
@@ -47,7 +64,13 @@ const authSlice = createSlice({
   initialState,
   reducers: {
     setSelectedDepartmentId: (state, action) => {
+      // if (state.currentUser?.department?._id === action.payload) {
+      //   state.selectedDepartmentId = action.payload;
+      // }
       state.selectedDepartmentId = action.payload;
+    },
+    incrementTokenVersion: (state) => {
+      state.tokenVersion += 1;
     },
   },
   extraReducers: (builder) => {
@@ -59,12 +82,15 @@ const authSlice = createSlice({
       .addCase(setCredentials.fulfilled, (state, action) => {
         state.isLoading = false;
         state.currentUser = action.payload.user;
-        state.selectedDepartmentId = action.payload.user?.department?._id;
+        state.selectedDepartmentId =
+          action.payload.user?.department?._id || null;
         state.isAuthenticated = true;
+        state.tokenVersion = action.payload.user?.tokenVersion || 0;
       })
       .addCase(setCredentials.rejected, (state, action) => {
         state.isLoading = false;
         state.error = action.payload;
+        state.tokenVersion = 0;
       })
       .addCase(setLogout.pending, (state) => {
         state.isLoading = true;
@@ -74,10 +100,11 @@ const authSlice = createSlice({
         state.currentUser = null;
         state.selectedDepartmentId = null;
         state.isAuthenticated = false;
+        state.tokenVersion = 0;
       })
-      .addCase(setLogout.rejected, (state, action) => {
+      .addCase(setLogout.rejected, (state) => {
         state.isLoading = false;
-        state.error = action.payload;
+        state.tokenVersion = 0;
       });
   },
 });
@@ -89,7 +116,9 @@ export const selectSelectedDepartmentId = (state) =>
 export const selectIsAuthenticated = (state) => state.auth.isAuthenticated;
 export const selectIsLoading = (state) => state.auth.isLoading;
 export const selectError = (state) => state.auth.error;
+export const selectTokenVersion = (state) => state.auth.tokenVersion;
 
-export const { setSelectedDepartmentId } = authSlice.actions;
+export const { setSelectedDepartmentId, incrementTokenVersion } =
+  authSlice.actions;
 
 export default authSlice.reducer;

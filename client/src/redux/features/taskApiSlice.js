@@ -3,45 +3,31 @@ import { apiSlice } from "./apiSlice";
 export const taskApiSlice = apiSlice.injectEndpoints({
   endpoints: (builder) => ({
     getTasks: builder.query({
-      query: ({ departmentId, page, status, limit }) => ({
+      query: ({ departmentId, page = 1, limit = 10, status }) => ({
         url: `/tasks/department/${departmentId}`,
         params: { page, limit, status },
       }),
-
       transformResponse: (response) => ({
         tasks: response.tasks,
         pagination: response.pagination,
       }),
-
-      providesTags: (result, error, { departmentId }) =>
-        result?.tasks?.length
-          ? [
-              { type: "Tasks", id: `LIST-${departmentId}` },
-              ...result.tasks.map(({ _id }) => ({ type: "Tasks", id: _id })),
-            ]
-          : [{ type: "Tasks", id: `LIST-${departmentId}` }],
-    }),
-
-    deleteTask: builder.mutation({
-      query: ({ departmentId, taskId }) => ({
-        url: `/tasks/department/${departmentId}/task/${taskId}`,
-        method: "DELETE",
-      }),
-      invalidatesTags: (result, error, { departmentId, taskId }) => [
-        { type: "Tasks", id: taskId },
-        { type: "Tasks", id: `LIST-${departmentId}` },
+      providesTags: (result, error, { departmentId }) => [
+        { type: "Tasks", id: `DEPARTMENT-${departmentId}` },
+        ...(result?.tasks?.map((task) => ({ type: "Tasks", id: task._id })) ||
+          []),
       ],
     }),
 
-    updateTask: builder.mutation({
-      query: ({ departmentId, taskId, taskData }) => ({
+    getTaskDetails: builder.query({
+      query: ({ departmentId, taskId }) => ({
         url: `/tasks/department/${departmentId}/task/${taskId}`,
-        method: "PUT",
-        body: taskData,
       }),
-      invalidatesTags: (result, error, { departmentId, taskId }) => [
+      transformResponse: (response) => ({
+        task: response.task,
+        activities: response.activities,
+      }),
+      providesTags: (result, error, { taskId }) => [
         { type: "Tasks", id: taskId },
-        { type: "Tasks", id: `LIST-${departmentId}` },
       ],
     }),
 
@@ -51,18 +37,62 @@ export const taskApiSlice = apiSlice.injectEndpoints({
         method: "POST",
         body: taskData,
       }),
+      invalidatesTags: (result, error, { departmentId }) => [
+        { type: "Tasks", id: `DEPARTMENT-${departmentId}` },
+      ],
+    }),
 
-      invalidatesTags: (result, error, { departmentId }) => {
-        console.log("departmentId:", departmentId);
-        return [{ type: "Tasks", id: `LIST-${departmentId}` }];
-      },
+    updateTask: builder.mutation({
+      query: ({ departmentId, taskId, taskData }) => ({
+        url: `/tasks/department/${departmentId}/task/${taskId}`,
+        method: "PUT",
+        body: taskData,
+      }),
+      invalidatesTags: (result, error, { taskId }) => [
+        { type: "Tasks", id: taskId },
+      ],
+    }),
+
+    deleteTask: builder.mutation({
+      query: ({ departmentId, taskId }) => ({
+        url: `/tasks/department/${departmentId}/task/${taskId}`,
+        method: "DELETE",
+      }),
+      invalidatesTags: (result, error, { taskId }) => [
+        { type: "Tasks", id: taskId },
+      ],
+    }),
+
+    createTaskActivity: builder.mutation({
+      query: ({ taskId, activityData }) => ({
+        url: `/tasks/${taskId}/activities`,
+        method: "POST",
+        body: activityData,
+      }),
+      invalidatesTags: (result, error, { taskId }) => [
+        { type: "Tasks", id: taskId },
+      ],
+    }),
+
+    deleteTaskActivity: builder.mutation({
+      query: ({ taskId, activityId }) => ({
+        url: `/tasks/${taskId}/activities/${activityId}`,
+        method: "DELETE",
+      }),
+      invalidatesTags: (result, error, { taskId }) => [
+        { type: "Tasks", id: taskId },
+      ],
     }),
   }),
 });
 
 export const {
   useGetTasksQuery,
-  useDeleteTaskMutation,
-  useUpdateTaskMutation,
+  useLazyGetTasksQuery,
+  useGetTaskDetailsQuery,
   useCreateTaskMutation,
+  useUpdateTaskMutation,
+  useDeleteTaskMutation,
+  useCreateTaskActivityMutation,
+  useDeleteTaskActivityMutation,
 } = taskApiSlice;

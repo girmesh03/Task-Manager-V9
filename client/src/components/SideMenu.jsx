@@ -1,4 +1,3 @@
-// mui
 import { styled } from "@mui/material/styles";
 import Box from "@mui/material/Box";
 import Avatar from "@mui/material/Avatar";
@@ -8,17 +7,14 @@ import Typography from "@mui/material/Typography";
 import Toolbar from "@mui/material/Toolbar";
 import MuiDrawer, { drawerClasses } from "@mui/material/Drawer";
 
-// hook
 import useAuth from "../hooks/useAuth";
 
-// components
 import DepartmentMenu from "./DepartmentMenu";
 import MenuContent from "./MenuContent";
 import CustomLogo from "./CustomLogo";
-// import CardAlert from "./CardAlert";
 import OptionsMenu from "./OptionsMenu";
 
-const drawerWidth = 240;
+import { drawerWidth } from "../utils/constants";
 
 const Drawer = styled(MuiDrawer)({
   width: drawerWidth,
@@ -32,6 +28,7 @@ const Drawer = styled(MuiDrawer)({
 });
 
 const SideMenu = () => {
+  console.log("SideMenu");
   const { currentUser } = useAuth();
   // console.log("currentUser", currentUser);
   return (

@@ -1,15 +1,12 @@
-// react
-import { memo } from "react";
 import PropTypes from "prop-types";
 import { Controller } from "react-hook-form";
 
-// dayjs and date picker
 import dayjs from "dayjs";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
-import { MobileDatePicker } from "@mui/x-date-pickers/MobileDatePicker";
+import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 
-const MuiMobileDatePicker = memo(({ name, control, rules, ...otherProps }) => {
+const MuiMobileDatePicker = ({ name, control, rules, ...otherProps }) => {
   return (
     <LocalizationProvider dateAdapter={AdapterDayjs}>
       <Controller
@@ -17,17 +14,19 @@ const MuiMobileDatePicker = memo(({ name, control, rules, ...otherProps }) => {
         control={control}
         rules={rules}
         render={({ field: { onChange, value }, fieldState: { error } }) => (
-          <MobileDatePicker
+          <DatePicker
             {...otherProps}
             value={value ? dayjs(value) : null}
             onChange={(newValue) =>
               onChange(newValue ? dayjs(newValue).format("YYYY-MM-DD") : null)
             }
+            // desktopModeMediaQuery="@media (min-width: 1900px)"
             slotProps={{
               textField: {
                 error: !!error,
                 helperText: error?.message,
                 fullWidth: true,
+                size: "small",
               },
               layout: {
                 sx: {
@@ -42,23 +41,13 @@ const MuiMobileDatePicker = memo(({ name, control, rules, ...otherProps }) => {
                   },
                 },
               },
-              // mobilePaper: {
-              //   sx: {
-              //     overflow: "hidden",
-              //     margin: 0,
-              //     minHeight: "100vh",
-              //     width: "100vw",
-              //     backgroundColor: "var(--template-palette-background-paper)",
-              //     backgroundImage: "none",
-              //   },
-              // },
             }}
           />
         )}
       />
     </LocalizationProvider>
   );
-});
+};
 
 MuiMobileDatePicker.propTypes = {
   name: PropTypes.string.isRequired,
