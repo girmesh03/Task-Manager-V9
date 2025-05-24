@@ -1,5 +1,4 @@
 import mongoose from "mongoose";
-
 import { getFormattedDate } from "../utils/GetDateIntervals.js";
 
 const notificationSchema = new mongoose.Schema(
@@ -21,8 +20,8 @@ const notificationSchema = new mongoose.Schema(
       enum: [
         "TaskAssignment",
         "TaskCompletion",
-        "TaskActivity",
-        "StatusUpdate",
+        "TaskUpdate",
+        "StatusChange",
         "SystemAlert",
       ],
       required: true,
@@ -38,14 +37,17 @@ const notificationSchema = new mongoose.Schema(
       index: true,
     },
     linkedDocument: {
-      type: {
-        _id: mongoose.Schema.Types.ObjectId,
-        docType: {
-          type: String,
-          enum: ["Task", "User", "Department", "TaskActivity"],
-          required: true,
-        },
-        department: mongoose.Schema.Types.ObjectId,
+      type: mongoose.Schema.Types.ObjectId,
+      refPath: "linkedDocumentType",
+      required: function () {
+        return ["TaskAssignment", "TaskUpdate"].includes(this.type);
+      },
+    },
+    linkedDocumentType: {
+      type: String,
+      enum: ["Task", "User", "Department", "TaskActivity"],
+      required: function () {
+        return !!this.linkedDocument;
       },
     },
     isRead: {
@@ -53,30 +55,22 @@ const notificationSchema = new mongoose.Schema(
       default: false,
       index: true,
     },
-    eventDate: {
-      type: Date,
-      default: () => getFormattedDate(new Date().toISOString(), 0),
-    },
   },
   {
     timestamps: true,
     versionKey: false,
     toJSON: {
-      virtuals: true,
       transform: function (doc, ret) {
         ret.createdAt = getFormattedDate(ret.createdAt, 0);
         ret.updatedAt = getFormattedDate(ret.updatedAt, 0);
-
         delete ret.id;
         return ret;
       },
     },
     toObject: {
-      virtuals: true,
       transform: function (doc, ret) {
         ret.createdAt = getFormattedDate(ret.createdAt, 0);
         ret.updatedAt = getFormattedDate(ret.updatedAt, 0);
-
         delete ret.id;
         return ret;
       },
@@ -87,12 +81,7 @@ const notificationSchema = new mongoose.Schema(
 // ===================== Indexes =====================
 notificationSchema.index({ user: 1, isRead: 1 });
 notificationSchema.index({ createdAt: -1 });
-notificationSchema.index({ type: 1, department: 1 });
-
-// ===================== Virtuals =====================
-notificationSchema.virtual("formattedEventDate").get(function () {
-  return getFormattedDate(this.eventDate);
-});
+notificationSchema.index({ linkedDocumentType: 1 });
 
 const Notification = mongoose.model("Notification", notificationSchema);
 

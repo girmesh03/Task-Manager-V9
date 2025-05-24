@@ -20,7 +20,6 @@ import {
 const router = express.Router();
 
 router.use(verifyJWT);
-// router.use(verifyDepartmentAccess);
 
 // Create Task in a Department
 router.post(
@@ -34,7 +33,6 @@ router.post(
 router.get(
   "/department/:departmentId",
   authorizeRoles("SuperAdmin", "Admin", "Manager", "User"),
-  // verifyDepartmentAccess,
   getAllTasks
 );
 
@@ -42,7 +40,6 @@ router.get(
 router.get(
   "/department/:departmentId/task/:taskId",
   authorizeRoles("SuperAdmin", "Admin", "Manager", "User"),
-  // verifyDepartmentAccess,
   getTaskById
 );
 
@@ -66,7 +63,6 @@ router.delete(
 router.post(
   "/:taskId/activities",
   authorizeRoles("SuperAdmin", "Admin", "Manager", "User"),
-  verifyDepartmentAccess,
   createTaskActivity
 );
 
@@ -81,7 +77,6 @@ router.get(
 router.delete(
   "/:taskId/activities/:activityId",
   authorizeRoles("SuperAdmin", "Admin", "Manager", "User"),
-  verifyDepartmentAccess,
   deleteTaskActivity
 );
 

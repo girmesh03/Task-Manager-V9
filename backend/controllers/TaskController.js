@@ -1,14 +1,29 @@
 import mongoose from "mongoose";
 import asyncHandler from "express-async-handler";
 import CustomError from "../errorHandler/CustomError.js";
-import Department from "../models/DepartmentModel.js";
 import User from "../models/UserModel.js";
 import Task from "../models/TaskModel.js";
+import Department from "../models/DepartmentModel.js";
+import AssignedTask from "../models/AssignedTaskModel.js";
+import ProjectTask from "../models/ProjectTaskModel.js";
 import Notification from "../models/NotificationModel.js";
 import TaskActivity from "../models/TaskActivityModel.js";
-import { getFormattedDate } from "../utils/GetDateIntervals.js";
 
-// @desc    Create Task
+// Authorization Helper
+const authorizeTaskAccess = (user, task) => {
+  const isCreator = task.createdBy.equals(user._id);
+  const isAssigned =
+    task.taskType === "AssignedTask" &&
+    task.assignedTo.some((id) => id.equals(user._id));
+  const isDepartmentManager =
+    ["Manager", "Admin", "SuperAdmin"].includes(user.role) &&
+    task.department.equals(user.department);
+  const isSuperAdmin = user.role === "SuperAdmin";
+
+  return isCreator || isAssigned || isDepartmentManager || isSuperAdmin;
+};
+
+// @desc    Create Task (AssignedTask or ProjectTask)
 // @route   POST /api/tasks/department/:departmentId
 // @access  Private (SuperAdmin, Admin, Manager)
 const createTask = asyncHandler(async (req, res, next) => {
@@ -17,73 +32,167 @@ const createTask = asyncHandler(async (req, res, next) => {
 
   try {
     const { departmentId } = req.params;
-    const { title, description, location, dueDate, priority, assignedTo } =
-      req.body;
+    const { taskType, ...taskData } = req.body;
     const creatorId = req.user._id;
 
-    // 1. Validate required fields
-    if (!assignedTo?.length) {
-      throw new CustomError("At least one user must be assigned", 400);
+    // 1. Validate department existence
+    const department = await Department.findById(departmentId).session(session);
+    if (!department) {
+      throw new CustomError("Department not found", 404);
     }
 
-    // 2. Validate assigned users
-    const assignedUsers = await User.find({ _id: { $in: assignedTo } }).session(
-      session
-    );
-    if (assignedUsers.length !== assignedTo.length) {
-      throw new CustomError("Invalid assigned users", 404);
+    // 2. Authorization check
+    if (
+      !["SuperAdmin", "Admin", "Manager"].includes(req.user.role) ||
+      (req.user.role === "Manager" && !req.user.department.equals(departmentId))
+    ) {
+      throw new CustomError(
+        "Not authorized to create tasks in this department",
+        403
+      );
     }
 
-    // const invalidUsers = assignedUsers.filter(
-    //   (u) => !u.department.equals(departmentId)
-    // );
-    // if (invalidUsers.length > 0) {
-    //   throw new CustomError("Assigned users must belong to department", 400);
-    // }
+    // 3. Validate task type
+    if (!["AssignedTask", "ProjectTask"].includes(taskType)) {
+      throw new CustomError(
+        "Invalid task type. Must be 'AssignedTask' or 'ProjectTask'",
+        400
+      );
+    }
 
-    // 4. Create task
-    const newTask = await Task.create(
-      [
-        {
-          title,
-          description,
-          location,
-          dueDate: getFormattedDate(dueDate, 0),
-          priority,
-          department: departmentId,
-          createdBy: creatorId,
-          assignedTo,
-        },
-      ],
-      { session }
-    );
+    // 4. Type-specific validations
+    if (taskType === "AssignedTask") {
+      if (!taskData.assignedTo?.length) {
+        throw new CustomError("Assigned tasks require at least one user", 400);
+      }
 
-    // 5. Create notifications
-    const notifications = assignedTo.map((userId) => ({
-      user: userId,
-      message: `New task assigned: ${title}`,
-      type: "TaskAssignment",
-      task: newTask[0]._id,
-      linkedDocument: {
-        _id: newTask[0]._id,
-        docType: "Task",
+      // Validate assigned users belong to department
+      const validUsers = await User.countDocuments({
+        _id: { $in: taskData.assignedTo },
         department: departmentId,
-      },
-    }));
-    await Notification.insertMany(notifications, { session });
+      }).session(session);
 
+      if (validUsers !== taskData.assignedTo.length) {
+        throw new CustomError(
+          "Some assigned users don't belong to the department",
+          400
+        );
+      }
+    }
+
+    if (taskType === "ProjectTask") {
+      if (!taskData.companyInfo?.name || !taskData.companyInfo?.phoneNumber) {
+        throw new CustomError(
+          "Company name and phone number are required for project tasks",
+          400
+        );
+      }
+      if (!taskData.proforma?.length) {
+        throw new CustomError(
+          "At least one proforma document is required for project tasks",
+          400
+        );
+      }
+    }
+
+    // 5. Create base task data
+    const baseTask = {
+      ...taskData,
+      department: departmentId,
+      createdBy: creatorId,
+    };
+
+    // 6. Create specific task type
+    let newTask;
+    if (taskType === "AssignedTask") {
+      newTask = new AssignedTask(baseTask);
+    } else {
+      newTask = new ProjectTask(baseTask);
+    }
+
+    // 7. Save task with validation
+    await newTask.validate({ session });
+    await newTask.save({ session });
+
+    // 8. Create notifications
+    const notifications = [];
+    if (taskType === "AssignedTask") {
+      notifications.push(
+        ...newTask.assignedTo.map((userId) => ({
+          user: userId,
+          type: "TaskAssignment",
+          message: `New task assigned: ${newTask.title}`,
+          linkedDocument: newTask._id,
+          linkedDocumentType: "Task",
+          department: departmentId,
+        }))
+      );
+    } else {
+      // Notify department managers
+      const managers = await User.find({
+        department: departmentId,
+        role: { $in: ["Manager", "Admin", "SuperAdmin"] },
+      }).session(session);
+
+      notifications.push(
+        ...managers.map((user) => ({
+          user: user._id,
+          type: "SystemAlert",
+          message: `New project task created: ${newTask.title}`,
+          linkedDocument: newTask._id,
+          linkedDocumentType: "Task",
+          department: departmentId,
+        }))
+      );
+    }
+
+    if (notifications.length > 0) {
+      await Notification.insertMany(notifications, { session });
+    }
+
+    // 9. Commit transaction
     await session.commitTransaction();
 
-    // 6. Populate response
-    const populatedTask = await Task.findById(newTask[0]._id)
-      .populate("createdBy", "firstName lastName fullName profilePicture")
-      .populate("assignedTo", "firstName lastName fullName profilePicture")
-      .populate("department", "name");
+    // 10. Populate response data
+    const populateOptions = [
+      {
+        path: "createdBy",
+        select: "firstName lastName fullName profilePicture",
+      },
+      { path: "department", select: "name" },
+      {
+        path: "activities",
+        populate: {
+          path: "performedBy",
+          select: "firstName lastName fullName profilePicture",
+        },
+      },
+    ];
+
+    if (taskType === "AssignedTask") {
+      populateOptions.push({
+        path: "assignedTo",
+        select: "firstName lastName fullName profilePicture",
+      });
+    }
+
+    const populatedTask = await (taskType === "AssignedTask"
+      ? AssignedTask
+      : ProjectTask
+    )
+      .findById(newTask._id)
+      .populate(populateOptions)
+      .lean({ virtuals: true });
+
+    // 11. Delete undefined fields
+    Object.keys(populatedTask).forEach((key) => {
+      if (populatedTask[key] === undefined) delete populatedTask[key];
+    });
 
     res.status(201).json({
       success: true,
-      task: populatedTask,
-      message: "Task created successfully",
+      data: populatedTask,
+      message: `${taskType} created successfully`,
     });
   } catch (error) {
     await session.abortTransaction();
@@ -93,23 +202,69 @@ const createTask = asyncHandler(async (req, res, next) => {
   }
 });
 
-// @desc    Get All Tasks
+// @desc    Get All Tasks (AssignedTask + ProjectTask)
 // @route   GET /api/tasks/department/:departmentId
 // @access  Private (SuperAdmin, Admin, Manager, User)
 const getAllTasks = asyncHandler(async (req, res, next) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
   try {
     const { departmentId } = req.params;
     const userId = req.user._id;
-    const userRole = req.user.role;
+    const {
+      page = 1,
+      limit = 10,
+      status,
+      sort = "-createdAt",
+      taskType,
+    } = req.query;
 
-    const { page = 1, limit = 10, status, sort = "-createdAt" } = req.query;
+    // Validate user existence
+    const user = await User.findById(userId).session(session);
+    if (!user) throw new CustomError("User not found", 404);
 
-    // 1. Build query
+    // Validate department existence
+    const department = await Department.findById(departmentId).session(session);
+    if (!department) throw new CustomError("Department not found", 404);
+
+    // Authorization check
+    if (user.role !== "SuperAdmin" && !user.department.equals(departmentId)) {
+      throw new CustomError(
+        "Not authorized to access this department's tasks",
+        403
+      );
+    }
+
+    // Build base query
     const query = { department: departmentId };
-    if (userRole === "User") query.assignedTo = { $in: [userId] };
+
+    // Apply task type filter
+    if (taskType && ["AssignedTask", "ProjectTask"].includes(taskType)) {
+      query.taskType = taskType;
+    }
+
+    // Apply role-specific filters
+    switch (user.role) {
+      case "User":
+        query.assignedTo = { $in: [user._id] };
+        break;
+
+      case "Manager":
+      case "Admin":
+        // No additional filters - show all department tasks
+        break;
+
+      case "SuperAdmin":
+        // Remove department filter for SuperAdmin
+        delete query.department;
+        break;
+    }
+
+    // Apply status filter
     if (status) query.status = status;
 
-    // 2. Execute paginated query
+    // Configure pagination
     const options = {
       page: parseInt(page),
       limit: parseInt(limit),
@@ -117,17 +272,63 @@ const getAllTasks = asyncHandler(async (req, res, next) => {
       populate: [
         {
           path: "createdBy",
-          select: "firstName lastName fullName email profilePicture",
+          select: "firstName lastName fullName profilePicture",
+          options: { session },
         },
         {
           path: "assignedTo",
-          select: "firstName lastName fullName email profilePicture",
+          select: "firstName lastName fullName profilePicture",
+          options: {
+            session,
+            ...(taskType === "ProjectTask"
+              ? { match: { _id: { $exists: false } } }
+              : {}),
+          },
         },
-        { path: "department", select: "name" },
+        {
+          path: "department",
+          select: "name description",
+          options: { session },
+        },
+        {
+          path: "activities",
+          options: {
+            session,
+            // sort: { createdAt: -1 },
+            // limit: 1,
+            populate: {
+              path: "performedBy",
+              select: "firstName lastName fullName profilePicture",
+            },
+          },
+        },
       ],
+      session,
     };
 
+    // Execute paginated query
     const results = await Task.paginate(query, options);
+    await session.commitTransaction();
+
+    // Transform response
+    const transformedTasks = results.docs.map((task) => ({
+      ...task.toObject({ virtuals: true }),
+      companyInfo:
+        task.taskType === "ProjectTask" ? task.companyInfo : undefined,
+      proforma: task.taskType === "ProjectTask" ? task.proforma : undefined,
+      assignedTo:
+        task.taskType === "AssignedTask" ? task.assignedTo : undefined,
+    }));
+
+    // Delete undefined fields
+    for (const task of transformedTasks) {
+      if (task.taskType === "ProjectTask") {
+        delete task.assignedTo;
+      } else {
+        delete task.companyInfo;
+        delete task.proforma;
+      }
+    }
 
     res.status(200).json({
       success: true,
@@ -136,81 +337,146 @@ const getAllTasks = asyncHandler(async (req, res, next) => {
         limit: results.limit,
         totalPages: results.totalPages,
         totalItems: results.totalDocs,
+        hasNextPage: results.hasNextPage,
+        hasPrevPage: results.hasPrevPage,
       },
-      tasks: results.docs,
+      tasks: transformedTasks,
       message: "Tasks retrieved successfully",
     });
   } catch (error) {
+    await session.abortTransaction();
     next(error);
+  } finally {
+    session.endSession();
   }
 });
 
-// @desc    Get Task
+// @desc    Get Task by ID
 // @route   GET /api/tasks/department/:departmentId/task/:taskId
 // @access  Private (SuperAdmin, Admin, Manager, User)
 const getTaskById = asyncHandler(async (req, res, next) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
   try {
     const { departmentId, taskId } = req.params;
-    // const userId = req.user._id;
-    const userRole = req.user.role;
-    // const isSuperAdmin = req.user.role === "SuperAdmin";
+    const userId = req.user._id;
 
-    // 1. Validate department access
-    // const user = await User.findById(userId);
-    // if (!isSuperAdmin && !user.department.equals(departmentId)) {
-    //   throw new CustomError("Department access denied", 403);
-    // }
+    // 1. Validate user existence
+    const user = await User.findById(userId).session(session);
+    if (!user) throw new CustomError("User not found", 404);
 
-    // 2. Find task with full population
-    const task = await Task.findOne({
-      _id: taskId,
-      department: departmentId,
-    })
-      .populate({
-        path: "createdBy",
-        select: "firstName lastName fullName email profilePicture",
-      })
-      .populate({
-        path: "assignedTo",
-        select: "firstName lastName fullName email profilePicture",
-      })
-      .populate({
-        path: "department",
-        select: "name description",
-      })
-      .populate({
-        path: "activities",
-        populate: {
-          path: "performedBy",
-          select: "firstName lastName fullName email profilePicture",
+    // 2. Validate department existence
+    const department = await Department.findById(departmentId).session(session);
+    if (!department) throw new CustomError("Department not found", 404);
+
+    // 3. Authorization check - Department access
+    if (user.role !== "SuperAdmin" && !user.department.equals(departmentId)) {
+      throw new CustomError(
+        "Not authorized to access this department's tasks",
+        403
+      );
+    }
+
+    // 4. Get task with proper population
+    const task = await Task.findById(taskId)
+      .session(session)
+      .populate([
+        {
+          path: "createdBy",
+          select: "firstName lastName email profilePicture role",
+          options: { session },
         },
-        options: { sort: { createdAt: -1 } }, // Sort activities
-      });
+        {
+          path: "assignedTo",
+          select: "firstName lastName email profilePicture role",
+          options: { session },
+        },
+        {
+          path: "department",
+          select: "name description managers",
+          options: { session },
+        },
+        {
+          path: "activities",
+          options: {
+            session,
+            // sort: { createdAt: -1 },
+            populate: {
+              path: "performedBy",
+              select: "firstName lastName profilePicture",
+              options: { session },
+            },
+          },
+        },
+      ]);
 
     if (!task) throw new CustomError("Task not found", 404);
 
-    // 3. Authorization check for regular users
-    if (userRole === "User") {
-      const isAssigned = task.assignedTo.some((user) =>
-        user._id.equals(req.user._id)
+    // 5. Validate task-department relationship
+    if (!task.department.equals(departmentId) && user.role !== "SuperAdmin") {
+      throw new CustomError(
+        "Task does not belong to specified department",
+        400
       );
-      if (!isAssigned) throw new CustomError("Task access denied", 403);
     }
+
+    // 6. Detailed authorization check
+    if (!authorizeTaskAccess(user, task)) {
+      throw new CustomError("Not authorized to view this task", 403);
+    }
+
+    // 7. Transform response based on task type
+    const transformedTask = {
+      ...task.toObject({ virtuals: true }),
+      companyInfo: undefined,
+      proforma: undefined,
+      assignedTo: undefined,
+    };
+
+    if (task.taskType === "ProjectTask") {
+      transformedTask.companyInfo = task.companyInfo;
+      transformedTask.proforma = task.proforma;
+    } else if (task.taskType === "AssignedTask") {
+      transformedTask.assignedTo = task.assignedTo;
+    }
+
+    // 8. Add department manager information
+    transformedTask.department.managers = await User.find({
+      _id: { $in: task.department.managers },
+    })
+      .select("firstName lastName email role profilePicture")
+      .session(session);
+
+    await session.commitTransaction();
+
+    // 9. Transform response
+    if (transformedTask.taskType === "ProjectTask") {
+      delete transformedTask.assignedTo;
+    } else {
+      delete transformedTask.companyInfo;
+      delete transformedTask.proforma;
+    }
+
+    const { activities, ...rest } = transformedTask;
 
     res.status(200).json({
       success: true,
-      task,
-      activities: task.activities || [],
+      task: rest,
+      activities: activities || [],
       message: "Task retrieved successfully",
     });
   } catch (error) {
+    await session.abortTransaction();
     next(error);
+  } finally {
+    session.endSession();
   }
 });
 
-// @desc    Update Task
+// @desc    Update Task (Direct updates only, no activity/logging)
 // @route   PUT /api/tasks/department/:departmentId/task/:taskId
-// @access  Private (SuperAdmin, Admin, Manager)
+// @access  Private (SuperAdmin, Admin, Manager) and creator
 const updateTaskById = asyncHandler(async (req, res, next) => {
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -218,128 +484,218 @@ const updateTaskById = asyncHandler(async (req, res, next) => {
   try {
     const { departmentId, taskId } = req.params;
     const userId = req.user._id;
-    const {
-      title,
-      description,
-      location,
-      dueDate,
-      priority,
-      assignedTo,
-      status,
-    } = req.body;
+    const updateData = { ...req.body };
 
-    // 1. Validate department access
-    // Even super admin can't update tasks in other departments
+    // 1. Validate user existence
     const user = await User.findById(userId).session(session);
-    if (!user.department.equals(departmentId)) {
-      throw new CustomError("Department access denied", 403);
-    }
+    if (!user) throw new CustomError("User not found", 404);
 
-    // 2. Fetch and validate task
-    const task = await Task.findOne({
-      _id: taskId,
-      department: departmentId,
-    }).session(session);
+    // 2. Validate department existence
+    const department = await Department.findById(departmentId).session(session);
+    if (!department) throw new CustomError("Department not found", 404);
 
+    // 3. Get the task without population
+    const task = await Task.findById(taskId).session(session);
     if (!task) throw new CustomError("Task not found", 404);
 
-    // 3. Handle assignedTo changes
-    let notifications = [];
-    if (assignedTo) {
-      // Validate new assignees
-      const newUsers = await User.find({
-        _id: { $in: assignedTo },
+    // 4. Validate task-department relationship
+    if (!task.department.equals(departmentId)) {
+      throw new CustomError(
+        "Task does not belong to specified department",
+        400
+      );
+    }
+
+    // 5. Strict authorization check
+    const isCreator = task.createdBy.equals(userId);
+    const isAllowedRole = ["SuperAdmin", "Admin", "Manager"].includes(
+      user.role
+    );
+    const sameDepartment = user.department.equals(departmentId);
+
+    if (!((isCreator || isAllowedRole) && sameDepartment)) {
+      throw new CustomError("Not authorized to update this task", 403);
+    }
+
+    // 6. Prevent User role from any updates
+    if (user.role === "User") {
+      throw new CustomError("Users cannot perform direct task updates", 403);
+    }
+
+    // 7. Protected field filtering
+    const protectedFields = ["taskType", "createdBy", "department", "status"];
+    protectedFields.forEach((field) => delete updateData[field]);
+
+    // 8. Validate allowed updates based on task type
+    const allowedUpdates = [
+      "title",
+      "description",
+      "location",
+      "dueDate",
+      "priority",
+    ];
+    if (task.taskType === "AssignedTask") allowedUpdates.push("assignedTo");
+    if (task.taskType === "ProjectTask")
+      allowedUpdates.push("companyInfo", "proforma");
+
+    // 9. Filter and apply updates
+    Object.keys(updateData).forEach((key) => {
+      if (allowedUpdates.includes(key)) task[key] = updateData[key];
+    });
+
+    // 10. Validate assignedTo for AssignedTasks
+    if (task.taskType === "AssignedTask" && updateData.assignedTo) {
+      const validUsers = await User.countDocuments({
+        _id: { $in: updateData.assignedTo },
+        department: departmentId,
       }).session(session);
-      const invalidUsers = newUsers.filter(
-        (u) => !u.department.equals(departmentId)
-      );
-      if (invalidUsers.length > 0) {
-        throw new CustomError("Invalid assigned users", 400);
-      }
 
-      // Find new assignees
-      const newAssignees = assignedTo.filter(
-        (id) => !task.assignedTo.some((existingId) => existingId.equals(id))
-      );
-
-      // Create notifications
-      notifications = newAssignees.map((userId) => ({
-        user: userId,
-        message: `Assigned to task: ${task.title}`,
-        type: "TaskAssignment",
-        task: taskId,
-        linkedDocument: {
-          _id: taskId,
-          docType: "Task",
-          department: departmentId,
-        },
-      }));
-
-      // Create activity
-      if (newAssignees.length > 0) {
-        await TaskActivity.create(
-          [
-            {
-              task: taskId,
-              performedBy: userId,
-              description: `Added ${newAssignees.length} new assignees`,
-              // type: "AddAssignees",
-              statusChange: {
-                from: task.status,
-                to: status || task.status,
-              },
-              // attachments: [],
-            },
-          ],
-          { session }
-        );
+      if (validUsers !== updateData.assignedTo.length) {
+        throw new CustomError("Invalid users in assignedTo list", 400);
       }
     }
 
-    // 4. Save notifications
+    // 11. Save changes
+    await task.save({ session });
+
+    // 12. Notification logic
+    const notifications = [];
+    const changedFields = task
+      .modifiedPaths()
+      .filter((path) => !protectedFields.includes(path));
+    const isProjectTask = task.taskType === "ProjectTask";
+    const isAssignedTask = task.taskType === "AssignedTask";
+
+    // Notification Scenario 1: New Assignees Added (AssignedTask)
+    if (isAssignedTask && changedFields.includes("assignedTo")) {
+      const originalAssignees = task.originalAssignedTo || [];
+      const newAssignees = updateData.assignedTo.filter(
+        (id) => !originalAssignees.some((oid) => oid.equals(id))
+      );
+
+      if (newAssignees.length > 0) {
+        newAssignees.forEach((userId) => {
+          notifications.push({
+            user: userId,
+            type: "TaskAssignment",
+            message: `You've been assigned to task: ${task.title}`,
+            linkedDocument: task._id,
+            linkedDocumentType: "Task",
+            department: departmentId,
+          });
+        });
+      }
+    }
+
+    // Notification Scenario 2: Important Field Changes
+    const importantFields = [
+      "title",
+      "dueDate",
+      "priority",
+      "companyInfo",
+      "proforma",
+    ];
+    const hasImportantChange = changedFields.some((f) =>
+      importantFields.includes(f)
+    );
+
+    if (hasImportantChange) {
+      // Notify creator if not the updater
+      if (!task.createdBy.equals(userId)) {
+        notifications.push({
+          user: task.createdBy,
+          type: "TaskUpdate",
+          message: `Task updated: ${task.title}`,
+          linkedDocument: task._id,
+          linkedDocumentType: "Task",
+          department: departmentId,
+        });
+      }
+
+      // For AssignedTasks: Notify existing assignees
+      if (isAssignedTask && task.assignedTo?.length) {
+        task.assignedTo.forEach((userId) => {
+          if (!userId.equals(userId)) {
+            notifications.push({
+              user: userId,
+              type: "TaskUpdate",
+              message: `Task updated: ${task.title}`,
+              linkedDocument: task._id,
+              linkedDocumentType: "Task",
+              department: departmentId,
+            });
+          }
+        });
+      }
+
+      // For ProjectTasks: Notify department leadership
+      if (isProjectTask) {
+        const leaders = await User.find({
+          department: departmentId,
+          role: { $in: ["Manager", "Admin", "SuperAdmin"] },
+        }).session(session);
+
+        leaders.forEach((leader) => {
+          if (!leader._id.equals(userId)) {
+            notifications.push({
+              user: leader._id,
+              type: "SystemAlert",
+              message: `Project task updated: ${task.title}`,
+              linkedDocument: task._id,
+              linkedDocumentType: "Task",
+              department: departmentId,
+            });
+          }
+        });
+      }
+    }
+
+    // Save notifications if any
     if (notifications.length > 0) {
       await Notification.insertMany(notifications, { session });
     }
 
-    // 5. Apply updates
-    task.title = title || task.title;
-    task.description = description || task.description;
-    task.location = location || task.location;
-    task.dueDate = getFormattedDate(dueDate, 0) || task.dueDate;
-    task.priority = priority || task.priority;
-    task.assignedTo = assignedTo || task.assignedTo;
+    // 13. Get populated task WITHIN the transaction
+    const populatedTask = await Task.findById(taskId)
+      .populate([
+        {
+          path: "createdBy",
+          select: "firstName lastName fullName profilePicture",
+        },
+        {
+          path: "assignedTo",
+          select: "firstName lastName fullName profilePicture",
+        },
+        { path: "department", select: "name" },
+        {
+          path: "activities",
+          options: { sort: { createdAt: -1 } },
+          populate: {
+            path: "performedBy",
+            select: "firstName lastName fullName profilePicture",
+          },
+        },
+      ])
+      .session(session)
+      .lean({ virtuals: true });
 
-    const updatedTask = await task.save({ session });
+    // 14. Commit transaction
     await session.commitTransaction();
 
-    const response = await Task.findById(updatedTask._id)
-      .populate({
-        path: "createdBy",
-        select: "firstName lastName fullName email profilePicture",
-      })
-      .populate({
-        path: "assignedTo",
-        select: "firstName lastName fullName email profilePicture",
-      })
-      .populate({
-        path: "department",
-        select: "name description",
-      })
-      .populate({
-        path: "activities",
-        populate: {
-          path: "performedBy",
-          select: "firstName lastName fullName email profilePicture",
-        },
-        options: { sort: { createdAt: -1 } }, // Sort activities
-      });
+    // 15. Transform response
+    if (populatedTask.taskType === "ProjectTask") {
+      delete populatedTask.assignedTo;
+    } else {
+      delete populatedTask.companyInfo;
+      delete populatedTask.proforma;
+    }
+
+    const { activities, ...rest } = populatedTask;
 
     res.status(200).json({
       success: true,
-      task: {
-        ...response.toObject(),
-        activities: task.activities || [], // Ensure array exists
-      },
+      task: rest,
+      activities: activities || [],
       message: "Task updated successfully",
     });
   } catch (error) {
@@ -352,7 +708,7 @@ const updateTaskById = asyncHandler(async (req, res, next) => {
 
 // @desc    Delete Task
 // @route   DELETE /api/tasks/department/:departmentId/task/:taskId
-// @access  Private (SuperAdmin, Admin, Manager)
+// @access  Private (SuperAdmin, Admin, Manager) and creator
 const deleteTaskById = asyncHandler(async (req, res, next) => {
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -361,24 +717,44 @@ const deleteTaskById = asyncHandler(async (req, res, next) => {
     const { departmentId, taskId } = req.params;
     const userId = req.user._id;
 
-    // 1. Validate permissions
-    const task = await Task.findOne({
-      _id: taskId,
-      department: departmentId,
-    }).session(session);
+    // 1. Validate user existence
+    const user = await User.findById(userId).session(session);
+    if (!user) throw new CustomError("User not found", 404);
+
+    // 2. Validate department existence
+    const department = await Department.findById(departmentId).session(session);
+    if (!department) throw new CustomError("Department not found", 404);
+
+    // 3. Get the task
+    const task = await Task.findById(taskId).session(session);
     if (!task) throw new CustomError("Task not found", 404);
 
-    if (!task.createdBy.equals(userId)) {
-      throw new CustomError("Delete permission denied", 403);
+    // 4. Validate task-department relationship
+    if (!task.department.equals(departmentId)) {
+      throw new CustomError(
+        "Task does not belong to specified department",
+        400
+      );
     }
 
-    // 2. Delete task (triggers cascading deletes)
+    // 5. Authorization check
+    const isCreator = task.createdBy.equals(userId);
+    const isAdminPlus = ["SuperAdmin", "Admin", "Manager"].includes(user.role);
+    const sameDepartment = user.department.equals(departmentId);
+
+    if (!((isCreator || isAdminPlus) && sameDepartment)) {
+      throw new CustomError("Not authorized to delete this task", 403);
+    }
+
+    // 6. Delete task (middleware handles related deletions)
     await task.deleteOne({ session });
+
+    // 7. Commit transaction
     await session.commitTransaction();
 
     res.status(200).json({
       success: true,
-      message: "Task deleted successfully",
+      message: "Task and related data deleted successfully",
     });
   } catch (error) {
     await session.abortTransaction();
@@ -398,85 +774,68 @@ const createTaskActivity = asyncHandler(async (req, res, next) => {
   try {
     const { taskId } = req.params;
     const userId = req.user._id;
-    const userRole = req.user.role;
     const { description, statusChange, attachments } = req.body;
 
-    // 1. Validate permissions, task existence and permissions
-    const user = await User.findById(userId);
-    if (userRole !== "SuperAdmin" && !user.department.equals(userId)) {
-      throw new CustomError("Department access denied", 403);
-    }
+    // 1. Validate user existence
+    const user = await User.findById(userId).session(session);
+    if (!user) throw new CustomError("User not found", 404);
 
-    const task = await Task.findOne({ _id: taskId })
-      .session(session)
-      .populate("createdBy", "_id")
-      .populate("assignedTo", "_id");
-
+    // 2. Get and validate task
+    const task = await Task.findById(taskId).session(session);
     if (!task) throw new CustomError("Task not found", 404);
 
-    // 2. Verify user is creator or assigned
-    const isCreator = task.createdBy._id.equals(userId);
-    const isAssigned = task.assignedTo.some((u) => u._id.equals(userId));
+    // 3. Authorization check
+    const isCreator = task.createdBy.equals(userId);
+    const isAssigned =
+      task.taskType === "AssignedTask" &&
+      task.assignedTo.some((id) => id.equals(userId));
+
     if (!isCreator && !isAssigned) {
-      throw new CustomError("Not authorized to add activities", 403);
+      throw new CustomError(
+        "Not authorized to add activities to this task",
+        403
+      );
     }
 
-    // 3. Create activity
-    const [activity] = await TaskActivity.create(
-      [
-        {
-          task: taskId,
-          performedBy: userId,
-          description,
-          statusChange: statusChange
-            ? {
-                from: task.status,
-                to: statusChange,
-              }
-            : undefined,
-          attachments: attachments || [],
-        },
-      ],
-      { session }
-    );
+    // 4. Create activity
+    const activityData = {
+      task: taskId,
+      performedBy: userId,
+      description,
+      statusChange,
+      attachments,
+    };
 
-    // 4. Auto-update task status through middleware
-    await task.save({ session });
+    const activity = new TaskActivity(activityData);
+    await activity.save({ session });
 
-    // 5. Get notification recipients (creator + assigned - performer)
-    const recipients = [
-      task.createdBy._id,
-      ...task.assignedTo.map((u) => u._id),
-    ].filter((id) => !id.equals(userId));
-
-    // Remove duplicates using Set
-    const uniqueRecipients = [
-      ...new Set(recipients.map((id) => id.toString())),
-    ].map((id) => new mongoose.Types.ObjectId(id));
-
-    // 6. Create notifications
-    if (uniqueRecipients.length > 0) {
-      const notifications = uniqueRecipients.map((userId) => ({
-        user: userId,
-        message: `New activity on task: ${task.title}`,
-        type: "TaskActivity",
-        task: taskId,
-        linkedDocument: {
-          _id: taskId,
-          docType: "Task",
-          department: task.department,
-        },
-      }));
-
-      await Notification.insertMany(notifications, { session });
+    // 5. Create notification for task creator
+    if (!isCreator) {
+      const notification = new Notification({
+        user: task.createdBy,
+        type: "TaskUpdate",
+        message: `New activity added to task: ${task.title}`,
+        linkedDocument: activity._id,
+        linkedDocumentType: "TaskActivity",
+        department: task.department,
+      });
+      await notification.save({ session });
     }
 
     await session.commitTransaction();
 
+    // 7. Return populated activity
+    const populatedActivity = await TaskActivity.findById(activity._id)
+      .populate({
+        path: "performedBy",
+        select: "firstName lastName fullName profilePicture",
+      })
+      .session(session);
+
     res.status(201).json({
       success: true,
-      activity,
-      message: "Activity created with notifications",
+      activity: populatedActivity,
+      message: "Activity created successfully",
     });
   } catch (error) {
     await session.abortTransaction();
@@ -490,55 +849,65 @@ const createTaskActivity = asyncHandler(async (req, res, next) => {
 // @route   GET /api/tasks/:taskId/activities
 // @access  Private (Assigned Users & Creator)
 const getTaskActivities = asyncHandler(async (req, res, next) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
   try {
     const { taskId } = req.params;
     const userId = req.user._id;
-    const userRole = req.user.role;
+    const { page = 1, limit = 10, sort = "-createdAt" } = req.query;
 
-    // 1. Validate department access, task existence and permissions
-    const user = await User.findById(userId);
-    if (userRole !== "SuperAdmin" && !user.department.equals(userId)) {
-      throw new CustomError("Department access denied", 403);
-    }
+    // 1. Validate user existence
+    const user = await User.findById(userId).session(session);
+    if (!user) throw new CustomError("User not found", 404);
 
+    // 2. Get and validate task
     const task = await Task.findById(taskId)
-      .populate("createdBy", "_id")
-      .populate("assignedTo", "_id");
+      .populate("department")
+      .session(session);
 
     if (!task) throw new CustomError("Task not found", 404);
 
-    // 2. Verify access (SuperAdmin bypass)
-    const isAllowed =
-      userRole === "SuperAdmin" ||
-      task.createdBy._id.equals(userId) ||
-      task.assignedTo.some((u) => u._id.equals(userId));
+    // 3. Authorization check
+    const isCreator = task.createdBy.equals(userId);
+    const isAssigned =
+      task.taskType === "AssignedTask" &&
+      task.assignedTo.some((id) => id.equals(userId));
+    const isDepartmentAdmin =
+      ["SuperAdmin", "Admin", "Manager"].includes(user.role) &&
+      user.department.equals(task.department._id);
 
-    if (!isAllowed) throw new CustomError("Access denied", 403);
+    if (!isCreator && !isAssigned && !isDepartmentAdmin) {
+      throw new CustomError("Not authorized to view these activities", 403);
+    }
 
-    // 3. Pagination configuration
-    const page = Math.max(1, parseInt(req.query.page) || 1);
-    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 10));
+    // 4. Build query with proper population
+    const options = {
+      page: parseInt(page),
+      limit: parseInt(limit),
+      sort,
+      populate: {
+        path: "performedBy",
+        select: "firstName lastName fullName profilePicture",
+        options: { session },
+      },
+      session,
+    };
 
-    // 4. Query activities with population
-    const results = await TaskActivity.paginate(
-      { task: taskId },
-      {
-        page,
-        limit,
-        sort: "-createdAt",
-        populate: {
-          path: "performedBy",
-          select: "firstName lastName profilePicture",
-          transform: (doc) => ({
-            _id: doc._id,
-            firstName: doc.firstName,
-            lastName: doc.lastName,
-            fullName: doc.fullName, // Requires virtual in User model
-            profilePicture: doc.profilePicture,
-          }),
-        },
-      }
-    );
+    // 5. Execute paginated query
+    const results = await TaskActivity.paginate({ task: taskId }, options);
+
+    // 6. Transform response
+    const transformedActivities = results.docs.map((activity) => ({
+      ...activity.toObject({ virtuals: true }),
+      // attachments: activity.attachments?.map(att => ({
+      //   ...att,
+      //   url: generateSignedUrl(att.url) // Implement your URL signing logic
+      // }))
+      attachments: activity.attachments,
+    }));
+
+    await session.commitTransaction();
 
     res.status(200).json({
       success: true,
@@ -547,12 +916,17 @@ const getTaskActivities = asyncHandler(async (req, res, next) => {
         limit: results.limit,
         totalPages: results.totalPages,
         totalItems: results.totalDocs,
+        hasNextPage: results.hasNextPage,
+        hasPrevPage: results.hasPrevPage,
       },
-      activities: results.docs,
+      activities: transformedActivities,
       message: "Activities retrieved successfully",
     });
   } catch (error) {
+    await session.abortTransaction();
     next(error);
+  } finally {
+    session.endSession();
   }
 });
 
@@ -565,76 +939,33 @@ const deleteTaskActivity = asyncHandler(async (req, res, next) => {
 
   try {
     const { taskId, activityId } = req.params;
-    const { _id: userId, role: userRole } = req.user;
+    const userId = req.user._id;
 
-    // 1. Validate department access, activity existence with task relationship
-    const user = await User.findById(userId);
-    if (userRole !== "SuperAdmin" && !user.department.equals(userId)) {
-      throw new CustomError("Department access denied", 403);
-    }
+    // 1. Validate user existence
+    const user = await User.findById(userId).session(session);
+    if (!user) throw new CustomError("User not found", 404);
 
+    // 2. Validate activity existence and relationship
     const activity = await TaskActivity.findById(activityId)
-      .populate({
-        path: "task",
-        select: "department status activities dueDate",
-        match: { _id: taskId },
-      })
-      .session(session);
-
-    if (!activity?.task) throw new CustomError("Activity not found", 404);
-
-    // 2. Prevent deletion for completed tasks
-    if (activity.task.status === "Completed") {
-      throw new CustomError(
-        "Cannot delete activities for completed tasks",
-        400
-      );
-    }
-
-    // 3. Authorization checks
-    const isCreator = activity.performedBy.equals(userId);
-    const isPrivileged = ["SuperAdmin", "Admin", "Manager"].includes(userRole);
-
-    if (!isCreator && !isPrivileged) {
-      throw new CustomError("Delete permission denied", 403);
-    }
-
-    // 4. Department validation (skip for SuperAdmin)
-    if (userRole !== "SuperAdmin") {
-      const user = await User.findById(userId)
-        .select("department")
-        .session(session);
-
-      if (!user.department.equals(activity.task.department)) {
-        throw new CustomError("Cross-department operation denied", 403);
-      }
-    }
-
-    // 5. Delete activity
-    await activity.deleteOne({ session });
-
-    // 6. Recalculate task status
-    const task = await Task.findById(taskId)
       .session(session)
-      .populate({
-        path: "activities",
-        match: { _id: { $ne: activityId } }, // Exclude deleted activity
-      });
+      .populate("task");
 
-    const relevantActivities = task.activities.filter(
-      (a) => a.statusChange?.to === task.status
-    );
-
-    if (relevantActivities.length === 0) {
-      const now = new Date();
-      task.status =
-        task.dueDate <= now
-          ? "Pending"
-          : task.activities.length > 0
-          ? "In Progress"
-          : "To Do";
-      await task.save({ session });
+    if (!activity) throw new CustomError("Activity not found", 404);
+    if (!activity.task._id.equals(taskId)) {
+      throw new CustomError("Activity does not belong to this task", 400);
     }
+
+    // 3. Authorization check
+    const isCreator = activity.performedBy.equals(userId);
+    const isAdminPlus = ["SuperAdmin", "Admin", "Manager"].includes(user.role);
+    const sameDepartment = user.department.equals(activity.task.department);
+
+    if (!(isCreator || (isAdminPlus && sameDepartment))) {
+      throw new CustomError("Not authorized to delete this activity", 403);
+    }
+
+    // 4. Delete activity
+    await activity.deleteOne({ session });
 
     await session.commitTransaction();
 
