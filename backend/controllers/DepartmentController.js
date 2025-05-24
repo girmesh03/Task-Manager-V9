@@ -7,7 +7,7 @@ import Notification from "../models/NotificationModel.js";
 
 // @desc    Create Department
 // @route   POST /api/departments
-// @access  Private (SuperAdmin, Admin)
+// @access  Private (SuperAdmin)
 const createDepartment = asyncHandler(async (req, res, next) => {
   const { name, description, managers } = req.body;
 
@@ -77,10 +77,8 @@ const createDepartment = asyncHandler(async (req, res, next) => {
                 message: `You've been assigned as manager for ${createdDepartment.name} department`,
                 type: "SystemAlert",
                 department: createdDepartment._id,
-                linkedDocument: {
-                  _id: createdDepartment._id,
-                  docType: "Department",
-                },
+                linkedDocument: user._id,
+                linkedDocumentType: "User",
               },
             ],
             { session }
@@ -200,7 +198,7 @@ const getAllDepartments = asyncHandler(async (req, res, next) => {
 
 // @desc    Get department by departmentId
 // @route   GET /api/departments/:departmentId
-// @access  Private
+// @access  Private (SuperAdmin, Admin, Manager, User)
 const getDepartmentById = asyncHandler(async (req, res, next) => {
   const { departmentId } = req.params;
 
@@ -283,7 +281,7 @@ const getDepartmentById = asyncHandler(async (req, res, next) => {
 
 // @desc    Update Department
 // @route   PUT /api/departments/:departmentId
-// @access  Private (SuperAdmin, Admin)
+// @access  Private (SuperAdmin Only)
 const updateDepartmentById = asyncHandler(async (req, res, next) => {
   const { departmentId } = req.params;
   const { name, description, managers } = req.body;
@@ -365,10 +363,8 @@ const updateDepartmentById = asyncHandler(async (req, res, next) => {
             } department`,
             type: "SystemAlert",
             department: departmentId,
-            linkedDocument: {
-              _id: departmentId,
-              docType: "Department",
-            },
+            linkedDocument: user._id,
+            linkedDocumentType: "User",
           },
         ],
         { session }
@@ -398,6 +394,8 @@ const updateDepartmentById = asyncHandler(async (req, res, next) => {
               message: `You were removed as manager from ${existingDept.name} department`,
               type: "SystemAlert",
               department: departmentId,
+              linkedDocument: user._id,
+              linkedDocumentType: "User",
             },
           ],
           { session }
@@ -438,7 +436,7 @@ const updateDepartmentById = asyncHandler(async (req, res, next) => {
 
 // @desc    Delete Department and all associated data
 // @route   DELETE /api/departments/:departmentId
-// @access  Private (SuperAdmin, Admin)
+// @access  Private (SuperAdmin Only)
 const deleteDepartmentById = asyncHandler(async (req, res, next) => {
   const { departmentId } = req.params;
   const session = await mongoose.startSession();
@@ -456,20 +454,19 @@ const deleteDepartmentById = asyncHandler(async (req, res, next) => {
       );
       if (!department) throw new CustomError("Department not found", 404);
 
-      // 3. Prevent deletion if SuperAdmin exists
-      const superAdmin = await User.findOne({
-        department: departmentId,
-        role: "SuperAdmin",
-      }).session(session);
+      // 3. Attach current user to document for middleware validation
+      department.$currentUser = req.user; // REQUIRED for schema-level auth check
 
-      if (superAdmin) {
+      // 4. Additional protection: Verify acting user is department's SuperAdmin
+      const actingUser = await User.findById(req.user._id).session(session);
+      if (!actingUser || actingUser.role !== "SuperAdmin") {
         throw new CustomError(
-          `Cannot delete department with SuperAdmin (${superAdmin.email})`,
+          "Unauthorized - SuperAdmin privileges required",
           403
         );
       }
 
-      // 4. Initiate deletion (triggers middleware with session)
+      // 5. Initiate deletion (triggers middleware with session)
       await department.deleteOne({ session });
     });
 
@@ -478,13 +475,11 @@ const deleteDepartmentById = asyncHandler(async (req, res, next) => {
       message: "Department deleted successfully",
     });
   } catch (error) {
-    // Only abort transaction if it hasn't already been aborted
     if (session.transaction.isActive) {
       await session.abortTransaction();
     }
     next(error);
   } finally {
-    // End session regardless of transaction state
     session.endSession();
   }
 });
