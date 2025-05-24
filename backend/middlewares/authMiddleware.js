@@ -57,9 +57,6 @@ export const authorizeRoles = (...role) => {
   };
 };
 
-// Verify Department Access
-// Routes: Tasks
-// For: Create, Update, Delete
 export const verifyDepartmentAccess = async (req, res, next) => {
   const session = await mongoose.startSession();
   try {
@@ -70,8 +67,15 @@ export const verifyDepartmentAccess = async (req, res, next) => {
 
     // Validate user and department, even superAdmin and Admin
     const user = await User.findById(userId).session(session);
-    const department = await Department.findById(departmentId).session(session);
+    if (!user) throw new CustomError("User not found", 404);
 
+    // SuperAdmin bypass
+    if (user.role === "SuperAdmin") {
+      await session.commitTransaction();
+      return next();
+    }
+
+    const department = await Department.findById(departmentId).session(session);
     if (!department) throw new CustomError("Department not found", 404);
     if (!user?.department.equals(departmentId)) {
       throw new CustomError("Department access denied", 403);
