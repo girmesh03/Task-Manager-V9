@@ -31,8 +31,10 @@ const taskSchema = new mongoose.Schema(
       validate: {
         validator: function (value) {
           const now = getFormattedDate(new Date(), 0);
-          if (this.isNew) return value > now;
-          return value > this.createdAt;
+          const formattedDueDate = getFormattedDate(value, 0);
+
+          if (this.isNew) return formattedDueDate > now;
+          return formattedDueDate > getFormattedDate(this.createdAt, 0);
         },
         message: function () {
           return this?.isNew
@@ -55,32 +57,21 @@ const taskSchema = new mongoose.Schema(
           const user = await mongoose
             .model("User")
             .findById(userId)
-            .select("department");
+            .select("department")
+            .session(this.$session());
           return user?.department?.equals(this.department);
         },
         message: "Creator must belong to the task's department",
       },
     },
-    assignedTo: [
-      {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "User",
-        validate: {
-          validator: async function (userId) {
-            const user = await mongoose.model("User").findById(userId);
-            return user?.department?.equals(this.parent().department);
-          },
-          message: "Assigned user must belong to task's department",
-        },
-      },
-    ],
     department: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Department",
-      required: true,
+      required: [true, "Department is required"],
     },
   },
   {
+    discriminatorKey: "taskType",
     timestamps: true,
     versionKey: false,
     toJSON: {
@@ -118,10 +109,11 @@ taskSchema.plugin(mongoosePaginate);
 
 // ===================== Auto-Status Updates =====================
 taskSchema.pre("save", async function (next) {
-  // Always check for pending status first
+  console.log("pre saving task");
+  const session = this.$session();
   const now = getFormattedDate(new Date(), 0);
 
-  if (this.dueDate <= now && this.status !== "Completed") {
+  if (getFormattedDate(this.dueDate, 0) <= now && this.status !== "Completed") {
     this.status = "Pending";
     return next();
   }
@@ -129,25 +121,55 @@ taskSchema.pre("save", async function (next) {
   if (["Pending", "Completed"].includes(this.status)) return next();
 
   if (this.status === "To Do") {
-    const activities = await mongoose
+    const query = mongoose
       .model("TaskActivity")
       .countDocuments({ task: this._id })
-      .session(this.$session());
+      .setOptions({ session });
 
+    const activities = await query;
     if (activities > 0) this.status = "In Progress";
   }
 
   next();
 });
 
-// ===================== Cascading Deletes =====================
-taskSchema.pre("deleteOne", { document: true }, async function (next) {
-  await mongoose.model("TaskActivity").deleteMany({ task: this._id });
-  await mongoose.model("Notification").deleteMany({
-    $or: [{ task: this._id }, { "linkedDocument.task": this._id }],
-  });
-  next();
-});
+// ===================== Middleware =====================
+taskSchema.pre(
+  "deleteOne",
+  { document: true, query: false },
+  async function (next) {
+    try {
+      const taskId = this._id;
+      const session = this.$session();
+
+      await Promise.all([
+        // Delete related task activities
+        mongoose
+          .model("TaskActivity")
+          .deleteMany({ task: taskId })
+          .setOptions({ session }),
+
+        // Delete notifications referencing the task
+        mongoose
+          .model("Notification")
+          .deleteMany({
+            $or: [
+              { task: taskId }, // Direct task reference
+              {
+                linkedDocument: taskId,
+                linkedDocumentType: "Task", // Reference through linkedDocument
+              },
+            ],
+          })
+          .setOptions({ session }),
+      ]);
+
+      next();
+    } catch (err) {
+      next(err);
+    }
+  }
+);
 
 const Task = mongoose.model("Task", taskSchema);
 

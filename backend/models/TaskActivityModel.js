@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import mongoosePaginate from "mongoose-paginate-v2";
+import CustomError from "../errorHandler/CustomError.js";
 import { getFormattedDate } from "../utils/GetDateIntervals.js";
 
 const taskActivitySchema = new mongoose.Schema(
@@ -7,37 +8,40 @@ const taskActivitySchema = new mongoose.Schema(
     task: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Task",
-      required: [true, "Task ID is required"],
+      required: [true, "Task reference is required"],
       validate: {
         validator: async function (taskId) {
+          const session = this.$session();
           const task = await mongoose
             .model("Task")
             .findById(taskId)
-            .select("assignedTo createdBy");
+            .select("taskType assignedTo createdBy department")
+            .session(session);
 
           if (!task) return false;
 
-          const isCreator = task.createdBy.equals(this.performedBy);
-          const isAssigned = task.assignedTo.some((assignedUserId) =>
-            assignedUserId.equals(this.performedBy)
-          );
+          // Validate based on task type
+          if (task.taskType === "AssignedTask") {
+            return (
+              task.assignedTo.some((userId) =>
+                userId.equals(this.performedBy)
+              ) || task.createdBy.equals(this.performedBy)
+            );
+          }
 
-          return isCreator || isAssigned;
+          if (task.taskType === "ProjectTask") {
+            return task.createdBy.equals(this.performedBy);
+          }
+
+          return false;
         },
-        message: "Only creator or assigned users can log activities",
+        message: "User not authorized to log activity for this task",
       },
     },
     performedBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
-      required: [true, "Performed user ID is required"],
-      validate: {
-        validator: async function (userId) {
-          const user = await mongoose.model("User").findById(userId);
-          return user?.isActive && user?.isVerified;
-        },
-        message: "User must be active and verified",
-      },
+      required: [true, "Performed user is required"],
     },
     description: {
       type: String,
@@ -64,6 +68,10 @@ const taskActivitySchema = new mongoose.Schema(
           enum: ["image", "document", "invoice"],
           default: "image",
         },
+        uploadedAt: {
+          type: Date,
+          default: () => getFormattedDate(new Date(), 0),
+        },
       },
     ],
   },
@@ -89,22 +97,34 @@ const taskActivitySchema = new mongoose.Schema(
   }
 );
 
+// ===================== Indexes =====================
+taskActivitySchema.index({ task: 1, "statusChange.to": 1 });
+taskActivitySchema.index({ performedBy: 1, createdAt: -1 });
+
+taskActivitySchema.plugin(mongoosePaginate);
+
 // ===================== Middleware =====================
 taskActivitySchema.pre("save", async function (next) {
   const session = this.$session();
+
   const task = await mongoose
     .model("Task")
     .findById(this.task)
     .session(session);
 
-  // Validate and update status change
   if (this.statusChange) {
+    // Auto-populate from status if missing
     if (!this.statusChange.from) {
-      return next(new Error("Status change from value is required"));
+      this.statusChange.from = task.status;
     }
 
     if (this.statusChange.from !== task.status) {
-      return next(new Error(`Invalid status transition from ${task.status}`));
+      return next(
+        new CustomError(
+          `Current task status is ${task.status}, cannot transition from ${this.statusChange.from}`,
+          400
+        )
+      );
     }
 
     const validTransitions = {
@@ -117,7 +137,12 @@ taskActivitySchema.pre("save", async function (next) {
     if (
       !validTransitions[this.statusChange.from]?.includes(this.statusChange.to)
     ) {
-      return next(new Error("Invalid status transition"));
+      return next(
+        new CustomError(
+          `Invalid status transition from ${this.statusChange.from} to ${this.statusChange.to}`,
+          400
+        )
+      );
     }
 
     task.status = this.statusChange.to;
@@ -127,19 +152,17 @@ taskActivitySchema.pre("save", async function (next) {
   next();
 });
 
-// ===================== Indexes =====================
-taskActivitySchema.index({ task: 1, "statusChange.to": 1 });
-taskActivitySchema.index({ performedBy: 1, createdAt: -1 });
-
-taskActivitySchema.plugin(mongoosePaginate);
-
-// ===================== Middleware =====================
 taskActivitySchema.pre("deleteOne", { document: true }, async function (next) {
-  // Prevent deletion if task is completed
-  const task = await mongoose.model("Task").findById(this.task);
+  const session = this.$session();
+  const task = await mongoose
+    .model("Task")
+    .findById(this.task)
+    .session(session);
 
   if (task.status === "Completed") {
-    throw new Error("Cannot delete activities for completed tasks");
+    return next(
+      new CustomError("Cannot delete activities for completed tasks", 400)
+    );
   }
 
   next();

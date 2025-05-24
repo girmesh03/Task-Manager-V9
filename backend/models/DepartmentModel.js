@@ -3,8 +3,9 @@ import mongoosePaginate from "mongoose-paginate-v2";
 import Notification from "./NotificationModel.js";
 import TaskActivity from "./TaskActivityModel.js";
 import Task from "./TaskModel.js";
+import RoutineTask from "./RoutineTaskModel.js";
 import User from "./UserModel.js";
-
+import CustomError from "../errorHandler/CustomError.js";
 import { getFormattedDate } from "../utils/GetDateIntervals.js";
 
 const departmentSchema = new mongoose.Schema(
@@ -59,7 +60,6 @@ const departmentSchema = new mongoose.Schema(
       transform: function (doc, ret) {
         ret.createdAt = getFormattedDate(ret.createdAt, 0);
         ret.updatedAt = getFormattedDate(ret.updatedAt, 0);
-
         delete ret.id;
         return ret;
       },
@@ -69,7 +69,6 @@ const departmentSchema = new mongoose.Schema(
       transform: function (doc, ret) {
         ret.createdAt = getFormattedDate(ret.createdAt, 0);
         ret.updatedAt = getFormattedDate(ret.updatedAt, 0);
-
         delete ret.id;
         return ret;
       },
@@ -96,19 +95,37 @@ departmentSchema.pre(
   "deleteOne",
   { document: true, query: false },
   async function (next) {
+    const currentUser = this.$currentUser; // Requires passing user context via document
+    if (!currentUser || currentUser.role !== "SuperAdmin") {
+      return next(
+        new CustomError("Only SuperAdmin can delete departments", 403)
+      );
+    }
+    next();
+  }
+);
+
+departmentSchema.pre(
+  "deleteOne",
+  { document: true, query: false },
+  async function (next) {
     const session = this.$session();
+    const departmentId = this._id;
 
     try {
-      await Notification.deleteMany({
-        $or: [
-          { department: this._id },
-          { "linkedDocument.department": this._id },
-        ],
-      }).session(session);
+      // Delete all department-related data
+      await Promise.all([
+        Notification.deleteMany({ department: departmentId }).session(session),
+        TaskActivity.deleteMany({ department: departmentId }).session(session),
+        Task.deleteMany({ department: departmentId }).session(session),
+        RoutineTask.deleteMany({ department: departmentId }).session(session),
+        User.deleteMany({ department: departmentId }).session(session),
+      ]);
 
-      await TaskActivity.deleteMany({ department: this._id }).session(session);
-      await Task.deleteMany({ department: this._id }).session(session);
-      await User.deleteMany({ department: this._id }).session(session);
+      // Delete notifications referencing department-linked documents
+      await Notification.deleteMany({
+        "linkedDocument.department": departmentId,
+      }).session(session);
 
       next();
     } catch (err) {
