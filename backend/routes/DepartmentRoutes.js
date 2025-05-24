@@ -16,7 +16,7 @@ const router = express.Router();
 router.use(verifyJWT);
 
 // Routes
-router.post("/", authorizeRoles("SuperAdmin", "Admin"), createDepartment);
+router.post("/", authorizeRoles("SuperAdmin"), createDepartment);
 router.get("/", getAllDepartments);
 router.get("/:departmentId", getDepartmentById);
 
