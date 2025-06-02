@@ -19,6 +19,10 @@ import CarpenterIcon from "@mui/icons-material/Carpenter";
 import EngineeringIcon from "@mui/icons-material/Engineering";
 import CategoryIcon from "@mui/icons-material/Category";
 
+// mui task type icon
+import AssignedTasksIcon from "@mui/icons-material/AssignmentInd";
+import ProjectTasksIcon from "@mui/icons-material/AccountTree";
+
 export const drawerWidth = 240;
 
 // statusTypes
@@ -46,4 +50,9 @@ export const categoryTypes = [
   { id: 6, label: "Carpentry", icon: CarpenterIcon },
   { id: 7, label: "Civil", icon: EngineeringIcon },
   { id: 8, label: "Other", icon: CategoryIcon },
+];
+
+export const taskCategoryTypes = [
+  { id: 1, label: "AssignedTask", icon: AssignedTasksIcon },
+  { id: 2, label: "ProjectTask", icon: ProjectTasksIcon },
 ];
