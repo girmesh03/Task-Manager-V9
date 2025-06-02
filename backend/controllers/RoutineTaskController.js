@@ -2,9 +2,7 @@ import mongoose from "mongoose";
 import asyncHandler from "express-async-handler";
 import CustomError from "../errorHandler/CustomError.js";
 import RoutineTask from "../models/RoutineTaskModel.js";
-import User from "../models/UserModel.js";
 import Notification from "../models/NotificationModel.js";
-import Department from "../models/DepartmentModel.js";
 import { getFormattedDate } from "../utils/GetDateIntervals.js";
 
 // Helper: Create notifications for department leadership
@@ -15,11 +13,14 @@ const notifyDepartmentLeadership = async (
   taskId,
   session
 ) => {
-  const leaders = await User.find({
-    department: departmentId,
-    role: { $in: ["Manager", "Admin", "SuperAdmin"] },
-    _id: { $ne: excludedUserId },
-  }).session(session);
+  const leaders = await mongoose
+    .model("User")
+    .find({
+      department: departmentId,
+      role: { $in: ["Manager", "Admin", "SuperAdmin"] },
+      _id: { $ne: excludedUserId },
+    })
+    .session(session);
 
   if (leaders.length === 0) return;
 
@@ -47,34 +48,20 @@ const createRoutineTask = asyncHandler(async (req, res, next) => {
     const { date, performedTasks } = req.body;
     const userId = req.user._id;
 
-    // Validate department exists
-    const department = await Department.findById(departmentId).session(session);
-    if (!department) throw new CustomError("Department not found", 404);
-
-    // Validate performer belongs to department
-    const performer = await User.findById(userId).session(session);
-    if (
-      performer.role !== "SuperAdmin" &&
-      !performer?.department.equals(departmentId)
-    ) {
-      throw new CustomError("Performer must belong to the department", 400);
-    }
-
-    // Validate date
+    // Validate input data
     const taskDate = getFormattedDate(new Date(date), 0);
     if (taskDate > getFormattedDate(new Date(), 0)) {
-      throw new CustomError("Cannot create tasks for future dates", 400);
+      throw new CustomError("Cannot create future-dated tasks", 400);
     }
 
-    // Validate performed tasks
     if (!performedTasks?.length) {
       throw new CustomError("At least one task must be performed", 400);
     }
 
     // Create task
     const routineTask = new RoutineTask({
-      department: department._id,
-      performedBy: performer._id,
+      department: departmentId,
+      performedBy: userId,
       date: taskDate,
       performedTasks,
     });
@@ -82,25 +69,30 @@ const createRoutineTask = asyncHandler(async (req, res, next) => {
     await routineTask.validate({ session });
     await routineTask.save({ session });
 
-    // Create notifications for department leadership
+    // Notify leadership
     await notifyDepartmentLeadership(
       departmentId,
-      performer._id,
-      `New routine task created: ${routineTask.date}`,
+      userId,
+      `New routine task logged: ${taskDate}`,
       routineTask._id,
       session
     );
 
-    const response = await RoutineTask.findById(routineTask._id)
-      .session(session)
+    const populatedTask = await RoutineTask.findById(routineTask._id)
       .populate("department", "name")
-      .populate("performedBy", "firstName lastName fullName profilePicture");
+      .populate(
+        "performedBy",
+        "firstName lastName fullName position profilePicture"
+      )
+      .session(session);
 
     await session.commitTransaction();
-
     res.status(201).json({
       success: true,
-      task: response,
+      task: {
+        ...populatedTask._doc,
+        date: new Date(populatedTask.date).toISOString().split("T")[0],
+      },
       message: "Routine task created successfully",
     });
   } catch (error) {
@@ -116,38 +108,10 @@ const createRoutineTask = asyncHandler(async (req, res, next) => {
 // @access  Private (User, Manager, Admin, SuperAdmin)
 const getAllRoutineTasks = asyncHandler(async (req, res, next) => {
   const session = await mongoose.startSession();
-
   try {
     const { departmentId } = req.params;
-    const { page = 1, limit = 10, startDate, endDate } = req.query;
-    const userId = req.user._id;
+    const { page = 1, limit = 10 } = req.query;
 
-    // Validate department exists
-    const department = await Department.findById(departmentId).session(session);
-    if (!department) throw new CustomError("Department not found", 404);
-
-    // Authorization check
-    const user = await User.findById(userId).session(session);
-    if (user.role !== "SuperAdmin" && !user.department.equals(departmentId)) {
-      throw new CustomError(
-        "Not authorized to access this department's tasks",
-        403
-      );
-    }
-
-    // Build query
-    const filter = { department: departmentId };
-
-    // Apply filters
-    filter.performedBy = userId;
-    if (startDate && endDate) {
-      filter.date = {
-        $gte: getFormattedDate(new Date(startDate)),
-        $lte: getFormattedDate(new Date(endDate)),
-      };
-    }
-
-    // Pagination options
     const options = {
       page: parseInt(page),
       limit: parseInt(limit),
@@ -156,13 +120,16 @@ const getAllRoutineTasks = asyncHandler(async (req, res, next) => {
         { path: "department", select: "name" },
         {
           path: "performedBy",
-          select: "firstName lastName fullName profilePicture",
+          select: "firstName lastName fullName position profilePicture",
         },
       ],
       session,
     };
 
-    const results = await RoutineTask.paginate(filter, options);
+    const results = await RoutineTask.paginate(
+      { department: departmentId },
+      options
+    );
 
     res.status(200).json({
       success: true,
@@ -174,8 +141,12 @@ const getAllRoutineTasks = asyncHandler(async (req, res, next) => {
         hasNextPage: results.hasNextPage,
         hasPrevPage: results.hasPrevPage,
       },
-      tasks: results.docs,
-      message: "Routine tasks retrieved successfully",
+      tasks: results.docs.map((task) => {
+        return {
+          ...task.toObject(),
+          date: new Date(task.date).toISOString().split("T")[0],
+        };
+      }),
     });
   } catch (error) {
     next(error);
@@ -192,26 +163,30 @@ const getRoutineTaskById = asyncHandler(async (req, res, next) => {
 
   try {
     const { departmentId, taskId } = req.params;
-    const user = req.user;
 
+    // Find task with session-based query
     const task = await RoutineTask.findOne({
       _id: taskId,
       department: departmentId,
     })
       .populate("department", "name")
-      .populate("performedBy", "firstName lastName fullName profilePicture")
+      .populate(
+        "performedBy",
+        "firstName lastName fullName position profilePicture"
+      )
       .session(session);
 
-    if (!task) throw new CustomError("Routine task not found", 404);
-
-    // Authorization check
-    if (user.role !== "SuperAdmin" && !user.department.equals(departmentId)) {
-      throw new CustomError("Not authorized to access this task", 403);
+    if (!task) {
+      throw new CustomError("Routine task not found", 404);
     }
 
+    // Return task data
     res.status(200).json({
       success: true,
-      task,
+      task: {
+        ...task._doc,
+        date: new Date(task.date).toISOString().split("T")[0],
+      },
       message: "Routine task retrieved successfully",
     });
   } catch (error) {
@@ -229,59 +204,76 @@ const updateRoutineTask = asyncHandler(async (req, res, next) => {
   session.startTransaction();
 
   try {
-    const { departmentId, taskId } = req.params;
-    const updates = { ...req.body };
+    const { taskId } = req.params;
+    const updates = req.body;
     const userId = req.user._id;
 
-    // Get existing task
-    const task = await RoutineTask.findOne({
-      _id: taskId,
-      department: departmentId,
-    }).session(session);
-
-    if (!task) throw new CustomError("Routine task not found", 404);
+    const task = await RoutineTask.findById(taskId).session(session);
+    if (!task) throw new CustomError("Task not found", 404);
 
     // Authorization check
     const isPerformer = task.performedBy.equals(userId);
-    const isManagerPlus =
-      ["Manager", "Admin", "SuperAdmin"].includes(req.user.role) &&
-      task.department.equals(req.user.departmentId);
+    const isManagerPlus = ["Manager", "Admin", "SuperAdmin"].includes(
+      req.user.role
+    );
 
     if (!isPerformer && !isManagerPlus) {
       throw new CustomError("Not authorized to update this task", 403);
     }
 
-    // Prevent date modification for past tasks
-    if (
-      updates.date &&
-      getFormattedDate(new Date(updates.date)) !== task.date
-    ) {
-      throw new CustomError("Cannot modify task date", 400);
+    // Prevent date modification for existing tasks
+    if (updates.date) {
+      const newDate = getFormattedDate(new Date(updates.date), 0);
+      if (newDate !== getFormattedDate(task.date, 0)) {
+        throw new CustomError("Task date cannot be modified", 400);
+      }
     }
 
-    // Update fields
+    // Validate performed tasks
+    if (updates.performedTasks) {
+      if (!Array.isArray(updates.performedTasks)) {
+        throw new CustomError("Performed tasks must be an array", 400);
+      }
+      if (updates.performedTasks.length === 0) {
+        throw new CustomError("At least one task must be performed", 400);
+      }
+    }
+
+    // Apply updates
     Object.keys(updates).forEach((key) => {
-      if (["performedTasks", "performedBy"].includes(key)) {
+      if (["performedTasks"].includes(key)) {
         task[key] = updates[key];
       }
     });
 
+    // await task.validate({ session });
     await task.save({ session });
 
-    // Create notifications for department leadership
+    // Notify leadership
     await notifyDepartmentLeadership(
       task.department,
       userId,
-      `Routine task updated: ${task.date}`,
+      `Routine task updated: ${getFormattedDate(task.date, 0)}`,
       task._id,
       session
     );
+
+    const updatedTask = await RoutineTask.findById(taskId)
+      .populate("department", "name")
+      .populate(
+        "performedBy",
+        "firstName lastName fullName position profilePicture"
+      )
+      .session(session);
 
     await session.commitTransaction();
 
     res.status(200).json({
       success: true,
-      task,
+      task: {
+        ...updatedTask._doc,
+        date: new Date(updatedTask.date).toISOString().split("T")[0],
+      },
       message: "Routine task updated successfully",
     });
   } catch (error) {
@@ -300,40 +292,28 @@ const deleteRoutineTask = asyncHandler(async (req, res, next) => {
   session.startTransaction();
 
   try {
-    const { departmentId, taskId } = req.params;
+    const { taskId } = req.params;
     const userId = req.user._id;
 
-    const task = await RoutineTask.findOneAndDelete({
-      _id: taskId,
-      department: departmentId,
-    }).session(session);
+    const task = await RoutineTask.findById(taskId).session(session);
+    if (!task) throw new CustomError("Task not found", 404);
 
-    if (!task) throw new CustomError("Routine task not found", 404);
-
-    // Authorization check
+    // Authorization: Performer or Manager+
     const isPerformer = task.performedBy.equals(userId);
-    if (
-      !["Manager", "Admin", "SuperAdmin"].includes(req.user.role) ||
-      !task.department.equals(req.user.departmentId) ||
-      !isPerformer
-    ) {
+    const isManagerPlus = ["Manager", "Admin", "SuperAdmin"].includes(
+      req.user.role
+    );
+
+    if (!isPerformer && !isManagerPlus) {
       throw new CustomError("Not authorized to delete this task", 403);
     }
 
-    // Create notifications for department leadership
-    await notifyDepartmentLeadership(
-      departmentId,
-      userId,
-      `Routine task deleted: ${task.date}`,
-      task._id,
-      session
-    );
-
+    await task.deleteOne({ session });
     await session.commitTransaction();
 
     res.status(200).json({
       success: true,
-      message: "Routine task deleted successfully",
+      message: "Task deleted successfully",
     });
   } catch (error) {
     await session.abortTransaction();

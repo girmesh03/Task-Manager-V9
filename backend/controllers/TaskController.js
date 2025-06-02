@@ -8,6 +8,7 @@ import AssignedTask from "../models/AssignedTaskModel.js";
 import ProjectTask from "../models/ProjectTaskModel.js";
 import Notification from "../models/NotificationModel.js";
 import TaskActivity from "../models/TaskActivityModel.js";
+import { getFormattedDate } from "../utils/GetDateIntervals.js";
 
 // Authorization Helper
 const authorizeTaskAccess = (user, task) => {
@@ -23,6 +24,11 @@ const authorizeTaskAccess = (user, task) => {
   return isCreator || isAssigned || isDepartmentManager || isSuperAdmin;
 };
 
+// Helper function for array comparison
+function arraysEqual(a, b) {
+  return a.length === b.length && a.every((val, index) => val === b[index]);
+}
+
 // @desc    Create Task (AssignedTask or ProjectTask)
 // @route   POST /api/tasks/department/:departmentId
 // @access  Private (SuperAdmin, Admin, Manager)
@@ -35,32 +41,12 @@ const createTask = asyncHandler(async (req, res, next) => {
     const { taskType, ...taskData } = req.body;
     const creatorId = req.user._id;
 
-    // 1. Validate department existence
-    const department = await Department.findById(departmentId).session(session);
-    if (!department) {
-      throw new CustomError("Department not found", 404);
-    }
-
-    // 2. Authorization check
-    if (
-      !["SuperAdmin", "Admin", "Manager"].includes(req.user.role) ||
-      (req.user.role === "Manager" && !req.user.department.equals(departmentId))
-    ) {
-      throw new CustomError(
-        "Not authorized to create tasks in this department",
-        403
-      );
-    }
-
-    // 3. Validate task type
+    // Validate task type
     if (!["AssignedTask", "ProjectTask"].includes(taskType)) {
-      throw new CustomError(
-        "Invalid task type. Must be 'AssignedTask' or 'ProjectTask'",
-        400
-      );
+      throw new CustomError("Invalid task type", 400);
     }
 
-    // 4. Type-specific validations
+    // Type-specific validations
     if (taskType === "AssignedTask") {
       if (!taskData.assignedTo?.length) {
         throw new CustomError("Assigned tasks require at least one user", 400);
@@ -95,14 +81,15 @@ const createTask = asyncHandler(async (req, res, next) => {
       }
     }
 
-    // 5. Create base task data
+    // Create base task data
     const baseTask = {
       ...taskData,
+      dueDate: getFormattedDate(new Date(taskData.dueDate), 0),
       department: departmentId,
       createdBy: creatorId,
     };
 
-    // 6. Create specific task type
+    // Create specific task type
     let newTask;
     if (taskType === "AssignedTask") {
       newTask = new AssignedTask(baseTask);
@@ -110,11 +97,11 @@ const createTask = asyncHandler(async (req, res, next) => {
       newTask = new ProjectTask(baseTask);
     }
 
-    // 7. Save task with validation
-    await newTask.validate({ session });
+    // Save task with validation
+    // await newTask.validate({ session });
     await newTask.save({ session });
 
-    // 8. Create notifications
+    // Create notifications
     const notifications = [];
     if (taskType === "AssignedTask") {
       notifications.push(
@@ -150,21 +137,21 @@ const createTask = asyncHandler(async (req, res, next) => {
       await Notification.insertMany(notifications, { session });
     }
 
-    // 9. Commit transaction
+    // Commit transaction
     await session.commitTransaction();
 
-    // 10. Populate response data
+    //  Populate response data
     const populateOptions = [
       {
         path: "createdBy",
-        select: "firstName lastName fullName profilePicture",
+        select: "firstName lastName fullName position profilePicture",
       },
       { path: "department", select: "name" },
       {
         path: "activities",
         populate: {
           path: "performedBy",
-          select: "firstName lastName fullName profilePicture",
+          select: "firstName lastName fullName position profilePicture",
         },
       },
     ];
@@ -172,7 +159,7 @@ const createTask = asyncHandler(async (req, res, next) => {
     if (taskType === "AssignedTask") {
       populateOptions.push({
         path: "assignedTo",
-        select: "firstName lastName fullName profilePicture",
+        select: "firstName lastName fullName position profilePicture",
       });
     }
 
@@ -182,16 +169,20 @@ const createTask = asyncHandler(async (req, res, next) => {
     )
       .findById(newTask._id)
       .populate(populateOptions)
+      .session(session)
       .lean({ virtuals: true });
 
-    // 11. Delete undefined fields
+    // Delete undefined fields
     Object.keys(populatedTask).forEach((key) => {
       if (populatedTask[key] === undefined) delete populatedTask[key];
     });
 
     res.status(201).json({
       success: true,
-      data: populatedTask,
+      task: {
+        ...populatedTask,
+        dueDate: new Date(populatedTask.dueDate).toISOString().split("T")[0],
+      },
       message: `${taskType} created successfully`,
     });
   } catch (error) {
@@ -207,11 +198,10 @@ const createTask = asyncHandler(async (req, res, next) => {
 // @access  Private (SuperAdmin, Admin, Manager, User)
 const getAllTasks = asyncHandler(async (req, res, next) => {
   const session = await mongoose.startSession();
-  session.startTransaction();
 
   try {
     const { departmentId } = req.params;
-    const userId = req.user._id;
+    const user = req.user;
     const {
       page = 1,
       limit = 10,
@@ -220,23 +210,8 @@ const getAllTasks = asyncHandler(async (req, res, next) => {
       taskType,
     } = req.query;
 
-    // Validate user existence
-    const user = await User.findById(userId).session(session);
-    if (!user) throw new CustomError("User not found", 404);
-
-    // Validate department existence
-    const department = await Department.findById(departmentId).session(session);
-    if (!department) throw new CustomError("Department not found", 404);
-
-    // Authorization check
-    if (user.role !== "SuperAdmin" && !user.department.equals(departmentId)) {
-      throw new CustomError(
-        "Not authorized to access this department's tasks",
-        403
-      );
-    }
-
-    // Build base query
+    // Build base query, manager, admin their department task, super admin all
+    // other than super admin, can't reach here due to department access middleware
     const query = { department: departmentId };
 
     // Apply task type filter
@@ -244,21 +219,10 @@ const getAllTasks = asyncHandler(async (req, res, next) => {
       query.taskType = taskType;
     }
 
-    // Apply role-specific filters
-    switch (user.role) {
-      case "User":
-        query.assignedTo = { $in: [user._id] };
-        break;
-
-      case "Manager":
-      case "Admin":
-        // No additional filters - show all department tasks
-        break;
-
-      case "SuperAdmin":
-        // Remove department filter for SuperAdmin
-        delete query.department;
-        break;
+    // Apply user role filter
+    if (user.role === "User") {
+      query.assignedTo = { $in: [user._id] };
+      query.taskType = "AssignedTask";
     }
 
     // Apply status filter
@@ -272,18 +236,13 @@ const getAllTasks = asyncHandler(async (req, res, next) => {
       populate: [
         {
           path: "createdBy",
-          select: "firstName lastName fullName profilePicture",
+          select: "firstName lastName fullName position profilePicture",
           options: { session },
         },
         {
           path: "assignedTo",
-          select: "firstName lastName fullName profilePicture",
-          options: {
-            session,
-            ...(taskType === "ProjectTask"
-              ? { match: { _id: { $exists: false } } }
-              : {}),
-          },
+          select: "firstName lastName fullName position profilePicture",
+          options: { session },
         },
         {
           path: "department",
@@ -298,7 +257,7 @@ const getAllTasks = asyncHandler(async (req, res, next) => {
             // limit: 1,
             populate: {
               path: "performedBy",
-              select: "firstName lastName fullName profilePicture",
+              select: "firstName lastName fullName position profilePicture",
             },
           },
         },
@@ -308,7 +267,6 @@ const getAllTasks = asyncHandler(async (req, res, next) => {
 
     // Execute paginated query
     const results = await Task.paginate(query, options);
-    await session.commitTransaction();
 
     // Transform response
     const transformedTasks = results.docs.map((task) => ({
@@ -340,11 +298,13 @@ const getAllTasks = asyncHandler(async (req, res, next) => {
         hasNextPage: results.hasNextPage,
         hasPrevPage: results.hasPrevPage,
       },
-      tasks: transformedTasks,
+      tasks: transformedTasks.map((task) => ({
+        ...task,
+        dueDate: new Date(task.dueDate).toISOString().split("T")[0],
+      })),
       message: "Tasks retrieved successfully",
     });
   } catch (error) {
-    await session.abortTransaction();
     next(error);
   } finally {
     session.endSession();
@@ -362,6 +322,7 @@ const getTaskById = asyncHandler(async (req, res, next) => {
     const { departmentId, taskId } = req.params;
     const userId = req.user._id;
 
+    // 1 to 3 additional checks on department access middleware
     // 1. Validate user existence
     const user = await User.findById(userId).session(session);
     if (!user) throw new CustomError("User not found", 404);
@@ -384,12 +345,12 @@ const getTaskById = asyncHandler(async (req, res, next) => {
       .populate([
         {
           path: "createdBy",
-          select: "firstName lastName email profilePicture role",
+          select: "firstName lastName fullName position profilePicture",
           options: { session },
         },
         {
           path: "assignedTo",
-          select: "firstName lastName email profilePicture role",
+          select: "firstName lastName fullName position profilePicture",
           options: { session },
         },
         {
@@ -404,7 +365,7 @@ const getTaskById = asyncHandler(async (req, res, next) => {
             // sort: { createdAt: -1 },
             populate: {
               path: "performedBy",
-              select: "firstName lastName profilePicture",
+              select: "firstName lastName fullName position profilePicture",
               options: { session },
             },
           },
@@ -445,7 +406,7 @@ const getTaskById = asyncHandler(async (req, res, next) => {
     transformedTask.department.managers = await User.find({
       _id: { $in: task.department.managers },
     })
-      .select("firstName lastName email role profilePicture")
+      .select("firstName lastName fullName position email role profilePicture")
       .session(session);
 
     await session.commitTransaction();
@@ -462,7 +423,10 @@ const getTaskById = asyncHandler(async (req, res, next) => {
 
     res.status(200).json({
       success: true,
-      task: rest,
+      task: {
+        ...rest,
+        dueDate: new Date(rest.dueDate).toISOString().split("T")[0],
+      },
       activities: activities || [],
       message: "Task retrieved successfully",
     });
@@ -498,6 +462,11 @@ const updateTaskById = asyncHandler(async (req, res, next) => {
     const task = await Task.findById(taskId).session(session);
     if (!task) throw new CustomError("Task not found", 404);
 
+    // Capture original state before modifications
+    const originalTaskState = task.toObject({ virtuals: true });
+    const originalAssignedTo =
+      originalTaskState.assignedTo?.map((id) => id.toString()) || [];
+
     // 4. Validate task-department relationship
     if (!task.department.equals(departmentId)) {
       throw new CustomError(
@@ -506,27 +475,26 @@ const updateTaskById = asyncHandler(async (req, res, next) => {
       );
     }
 
-    // 5. Strict authorization check
+    // 5. Authorization check
     const isCreator = task.createdBy.equals(userId);
-    const isAllowedRole = ["SuperAdmin", "Admin", "Manager"].includes(
+    const isManagerPlus = ["SuperAdmin", "Admin", "Manager"].includes(
       user.role
     );
-    const sameDepartment = user.department.equals(departmentId);
+    const validDepartment = task.department.equals(user.department);
 
-    if (!((isCreator || isAllowedRole) && sameDepartment)) {
+    if (!(isCreator || (isManagerPlus && validDepartment))) {
       throw new CustomError("Not authorized to update this task", 403);
     }
 
-    // 6. Prevent User role from any updates
-    if (user.role === "User") {
-      throw new CustomError("Users cannot perform direct task updates", 403);
-    }
+    // 6. Block User role updates
+    if (user.role === "User")
+      throw new CustomError("Users cannot update tasks", 403);
 
-    // 7. Protected field filtering
+    // 7. Filter protected fields
     const protectedFields = ["taskType", "createdBy", "department", "status"];
     protectedFields.forEach((field) => delete updateData[field]);
 
-    // 8. Validate allowed updates based on task type
+    // 8. Validate allowed updates
     const allowedUpdates = [
       "title",
       "description",
@@ -538,12 +506,24 @@ const updateTaskById = asyncHandler(async (req, res, next) => {
     if (task.taskType === "ProjectTask")
       allowedUpdates.push("companyInfo", "proforma");
 
-    // 9. Filter and apply updates
+    // 9. Apply updates and track changes
+    let hasAssignedToChange = false;
     Object.keys(updateData).forEach((key) => {
-      if (allowedUpdates.includes(key)) task[key] = updateData[key];
+      if (allowedUpdates.includes(key)) {
+        if (key === "assignedTo") {
+          // Track array changes by content
+          const newAssignees = updateData[key].map((id) => id.toString());
+          const oldAssignees = task[key].map((id) => id.toString());
+          hasAssignedToChange = !arraysEqual(newAssignees, oldAssignees);
+        }
+        task[key] =
+          key === "dueDate"
+            ? getFormattedDate(new Date(updateData[key]), 0)
+            : updateData[key];
+      }
     });
 
-    // 10. Validate assignedTo for AssignedTasks
+    // 10. Validate assignedTo users
     if (task.taskType === "AssignedTask" && updateData.assignedTo) {
       const validUsers = await User.countDocuments({
         _id: { $in: updateData.assignedTo },
@@ -555,53 +535,69 @@ const updateTaskById = asyncHandler(async (req, res, next) => {
       }
     }
 
-    // 11. Save changes
-    await task.save({ session });
+    // 11. Get changed fields using original state comparison
+    const changedFields = [];
+    Object.keys(updateData).forEach((key) => {
+      if (
+        allowedUpdates.includes(key) &&
+        JSON.stringify(task[key]) !== JSON.stringify(originalTaskState[key])
+      ) {
+        changedFields.push(key);
+      }
+    });
 
-    // 12. Notification logic
-    const notifications = [];
-    const changedFields = task
-      .modifiedPaths()
-      .filter((path) => !protectedFields.includes(path));
-    const isProjectTask = task.taskType === "ProjectTask";
-    const isAssignedTask = task.taskType === "AssignedTask";
-
-    // Notification Scenario 1: New Assignees Added (AssignedTask)
-    if (isAssignedTask && changedFields.includes("assignedTo")) {
-      const originalAssignees = task.originalAssignedTo || [];
-      const newAssignees = updateData.assignedTo.filter(
-        (id) => !originalAssignees.some((oid) => oid.equals(id))
-      );
-
-      if (newAssignees.length > 0) {
-        newAssignees.forEach((userId) => {
-          notifications.push({
-            user: userId,
-            type: "TaskAssignment",
-            message: `You've been assigned to task: ${task.title}`,
-            linkedDocument: task._id,
-            linkedDocumentType: "Task",
-            department: departmentId,
-          });
-        });
+    // Special handling for assignedTo array changes
+    if (task.taskType === "AssignedTask") {
+      const currentAssignedTo =
+        task.assignedTo?.map((id) => id.toString()) || [];
+      if (!arraysEqual(currentAssignedTo, originalAssignedTo)) {
+        if (!changedFields.includes("assignedTo")) {
+          changedFields.push("assignedTo");
+        }
       }
     }
 
-    // Notification Scenario 2: Important Field Changes
-    const importantFields = [
+    // 12. Save changes
+    await task.save({ session });
+
+    // 13. Notification logic
+    const notifications = [];
+    const currentAssignedTo = task.assignedTo?.map((id) => id.toString()) || [];
+
+    // Notification Scenario 1: New Assignees
+    if (task.taskType === "AssignedTask" && hasAssignedToChange) {
+      const newAssignees = currentAssignedTo.filter(
+        (id) => !originalAssignedTo.includes(id)
+      );
+
+      if (newAssignees.length) {
+        notifications.push(
+          ...newAssignees.map((userId) => ({
+            user: userId,
+            type: "TaskAssignment",
+            message: `Assigned to task: ${task.title}`,
+            linkedDocument: task._id,
+            linkedDocumentType: "Task",
+            department: departmentId,
+          }))
+        );
+      }
+    }
+
+    // Notification Scenario 2: Important Changes
+    const importantFields = new Set([
       "title",
       "dueDate",
       "priority",
       "companyInfo",
       "proforma",
-    ];
-    const hasImportantChange = changedFields.some((f) =>
-      importantFields.includes(f)
-    );
+    ]);
+    const hasImportantChange =
+      changedFields.some((f) => importantFields.has(f)) || hasAssignedToChange;
 
     if (hasImportantChange) {
-      // Notify creator if not the updater
-      if (!task.createdBy.equals(userId)) {
+      // Notify creator
+      if (!isCreator) {
         notifications.push({
           user: task.createdBy,
           type: "TaskUpdate",
@@ -612,14 +608,14 @@ const updateTaskById = asyncHandler(async (req, res, next) => {
         });
       }
 
-      // For AssignedTasks: Notify existing assignees
-      if (isAssignedTask && task.assignedTo?.length) {
-        task.assignedTo.forEach((userId) => {
-          if (!userId.equals(userId)) {
+      // Notify existing assignees
+      if (task.taskType === "AssignedTask") {
+        originalAssignedTo.forEach((userId) => {
+          if (userId !== user._id.toString()) {
             notifications.push({
               user: userId,
               type: "TaskUpdate",
-              message: `Task updated: ${task.title}`,
+              message: `Task modified: ${task.title}`,
               linkedDocument: task._id,
               linkedDocumentType: "Task",
               department: departmentId,
@@ -628,43 +624,42 @@ const updateTaskById = asyncHandler(async (req, res, next) => {
         });
       }
 
-      // For ProjectTasks: Notify department leadership
-      if (isProjectTask) {
+      // Notify project stakeholders
+      if (task.taskType === "ProjectTask") {
         const leaders = await User.find({
           department: departmentId,
           role: { $in: ["Manager", "Admin", "SuperAdmin"] },
+          _id: { $ne: userId },
         }).session(session);
 
         leaders.forEach((leader) => {
-          if (!leader._id.equals(userId)) {
-            notifications.push({
-              user: leader._id,
-              type: "SystemAlert",
-              message: `Project task updated: ${task.title}`,
-              linkedDocument: task._id,
-              linkedDocumentType: "Task",
-              department: departmentId,
-            });
-          }
+          notifications.push({
+            user: leader._id,
+            type: "SystemAlert",
+            message: `Project task updated: ${task.title}`,
+            linkedDocument: task._id,
+            linkedDocumentType: "Task",
+            department: departmentId,
+          });
         });
       }
     }
 
-    // Save notifications if any
-    if (notifications.length > 0) {
+    // Save notifications
+    if (notifications.length) {
       await Notification.insertMany(notifications, { session });
     }
 
-    // 13. Get populated task WITHIN the transaction
+    // 14. Get updated task data
     const populatedTask = await Task.findById(taskId)
       .populate([
         {
           path: "createdBy",
-          select: "firstName lastName fullName profilePicture",
+          select: "firstName lastName fullName position profilePicture",
         },
         {
           path: "assignedTo",
-          select: "firstName lastName fullName profilePicture",
+          select: "firstName lastName fullName position profilePicture",
         },
         { path: "department", select: "name" },
         {
@@ -672,17 +667,14 @@ const updateTaskById = asyncHandler(async (req, res, next) => {
           options: { sort: { createdAt: -1 } },
           populate: {
             path: "performedBy",
-            select: "firstName lastName fullName profilePicture",
+            select: "firstName lastName fullName position profilePicture",
           },
         },
       ])
       .session(session)
       .lean({ virtuals: true });
 
-    // 14. Commit transaction
-    await session.commitTransaction();
-
-    // 15. Transform response
+    // 15. Clean response format
     if (populatedTask.taskType === "ProjectTask") {
       delete populatedTask.assignedTo;
     } else {
@@ -690,12 +682,15 @@ const updateTaskById = asyncHandler(async (req, res, next) => {
       delete populatedTask.proforma;
     }
 
-    const { activities, ...rest } = populatedTask;
+    await session.commitTransaction();
 
     res.status(200).json({
       success: true,
-      task: rest,
-      activities: activities || [],
+      task: {
+        ...populatedTask,
+        dueDate: new Date(populatedTask.dueDate).toISOString().split("T")[0],
+      },
+      activities: populatedTask.activities || [],
       message: "Task updated successfully",
     });
   } catch (error) {
@@ -828,7 +823,7 @@ const createTaskActivity = asyncHandler(async (req, res, next) => {
     const populatedActivity = await TaskActivity.findById(activity._id)
       .populate({
         path: "performedBy",
-        select: "firstName lastName fullName profilePicture",
+        select: "firstName lastName fullName position profilePicture",
       })
       .session(session);
 
@@ -841,6 +836,7 @@ const createTaskActivity = asyncHandler(async (req, res, next) => {
     await session.abortTransaction();
     next(error);
   } finally {
+    console.log("here");
     session.endSession();
   }
 });
@@ -941,9 +937,12 @@ const deleteTaskActivity = asyncHandler(async (req, res, next) => {
     const { taskId, activityId } = req.params;
     const userId = req.user._id;
 
-    // 1. Validate user existence
+    // 1. Validate user existence and task
     const user = await User.findById(userId).session(session);
     if (!user) throw new CustomError("User not found", 404);
+
+    const task = await Task.findById(taskId).session(session);
+    if (!task) throw new CustomError("Task not found", 404);
 
     // 2. Validate activity existence and relationship
     const activity = await TaskActivity.findById(activityId)
@@ -967,6 +966,17 @@ const deleteTaskActivity = asyncHandler(async (req, res, next) => {
     // 4. Delete activity
     await activity.deleteOne({ session });
 
+    // 5. Update task status if no activity left
+    const activityCount = await TaskActivity.countDocuments({
+      task: taskId,
+    }).session(session);
+
+    if (activityCount === 0) {
+      task.status = "To Do";
+      await task.save({ session });
+    }
+
+    // 6. Commit changes
     await session.commitTransaction();
 
     res.status(200).json({
