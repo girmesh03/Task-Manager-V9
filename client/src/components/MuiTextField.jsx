@@ -59,6 +59,7 @@ MuiTextField.propTypes = {
   type: propTypes.string,
   multiline: propTypes.bool,
   rows: propTypes.number,
+  maxRows: propTypes.number,
   select: propTypes.bool,
   children: propTypes.node,
 };

@@ -93,7 +93,7 @@ const OptionsMenu = memo(() => {
       >
         <MenuItem
           component={Link}
-          to={`/dashboard/users/${currentUserId}/profile`}
+          to={`/users/${currentUserId}/profile`}
           onClick={handleClose}
         >
           Profile
@@ -101,7 +101,7 @@ const OptionsMenu = memo(() => {
         <Divider />
         <MenuItem
           component={Link}
-          to={"/dashboard/admin-panel"}
+          to={"/admin-panel"}
           onClick={handleClose}
           disabled={!isAdminOrSuperAdmin}
         >

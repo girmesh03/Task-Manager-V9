@@ -24,7 +24,9 @@ const StyledBreadcrumbs = styled(Breadcrumbs)(({ theme }) => ({
 const breadcrumbNameMap = {
   "/dashboard": "Dashboard",
   "/tasks": "Tasks",
+  "/routine-tasks": "Routine Tasks",
   "/tasks/:taskId/details": "Task Details",
+  "/routine-tasks/:taskId/details": "Routine Task Details",
   "/users": "Users",
   "/users/:userId/profile": "User Profile",
 };
@@ -50,6 +52,23 @@ const getBreadcrumbs = (pathnames) => {
       } else if (nextSegment === "details") {
         breadcrumbs.push({
           name: "Task Details",
+          path: `${builtPath}/details`,
+        });
+        i++; // Skip "details"
+      }
+      continue; // Skip the ID itself
+    }
+
+    if (prevSegment === "routine-tasks" && isId(segment)) {
+      if (nextSegment === "update") {
+        breadcrumbs.push({
+          name: "Update Routine Task",
+          path: `${builtPath}/update`,
+        });
+        i++; // Skip "update"
+      } else if (nextSegment === "details") {
+        breadcrumbs.push({
+          name: "Routine Task Details",
           path: `${builtPath}/details`,
         });
         i++; // Skip "details"

@@ -14,8 +14,9 @@ export const LoadingFallback = ({ height = "100%", sx = {} }) => {
       display="flex"
       justifyContent="center"
       alignItems="center"
+      sx={{ ...sx }}
     >
-      <CircularProgress size={50} disableShrink sx={{ ...sx }} />
+      <CircularProgress size={50} disableShrink />
     </Box>
   );
 };
@@ -31,16 +32,21 @@ export const LoadingBackdrop = ({ open = false, sx = {} }) => {
       open={open}
       sx={(theme) => ({
         backgroundColor: "rgba(0, 0, 0, 0.2)",
-        zIndex: (theme) => theme.zIndex.drawer + 1,
+        zIndex: theme.zIndex.drawer + 1,
         ...sx,
         backdropFilter: "blur(1px)",
-        [theme.breakpoints.up("md")]: {
-          width: `calc(100vw - ${drawerWidth}px)`,
-          marginLeft: `${drawerWidth}px`,
-        },
       })}
     >
-      <CircularProgress color="primary" />
+      <CircularProgress
+        disableShrink
+        size={50}
+        color="primary"
+        sx={(theme) => ({
+          [theme.breakpoints.up("md")]: {
+            marginLeft: `${drawerWidth}px`,
+          },
+        })}
+      />
     </Backdrop>
   );
 };

@@ -1,7 +1,5 @@
-// react
-// import { Navigate } from "react-router";
+import { Navigate } from "react-router";
 
-// mui
 import { styled } from "@mui/material/styles";
 import MuiAvatar from "@mui/material/Avatar";
 import MuiListItemAvatar from "@mui/material/ListItemAvatar";
@@ -16,7 +14,6 @@ import Select, { selectClasses } from "@mui/material/Select";
 import AddRoundedIcon from "@mui/icons-material/AddRounded";
 import DevicesRoundedIcon from "@mui/icons-material/DevicesRounded";
 
-// redux
 import { useSelector, useDispatch } from "react-redux";
 import {
   selectSelectedDepartmentId,
@@ -24,10 +21,8 @@ import {
 } from "../redux/features/authSlice";
 import { useGetAllDepartmentsQuery } from "../redux/features/departmentApiSlice";
 
-// hooks
 import useAuth from "../hooks/useAuth";
 
-// styled components
 const Avatar = styled(MuiAvatar)(({ theme }) => ({
   width: 28,
   height: 28,
@@ -49,11 +44,11 @@ const DepartmentMenu = () => {
   const {
     data = {},
     isLoading,
-    // isError,
-    // error,
+    isError,
+    error,
   } = useGetAllDepartmentsQuery(
-    { page: 1, limit: 10 }
-    // { refetchOnMountOrArgChange: true }
+    { page: 1, limit: 10 },
+    { refetchOnMountOrArgChange: true }
   );
 
   const { departments = [] } = data;
@@ -72,18 +67,19 @@ const DepartmentMenu = () => {
       </Toolbar>
     );
 
-  // if (isError) return <Navigate to="/error" state={{ error }} replace />;
+  if (isError) return <Navigate to="/error" state={{ error }} replace />;
 
   return (
     <Select
       labelId="department-select"
       id="company-department-select"
-      value={selectedDepartmentId}
+      value={
+        departments.find((dept) => dept._id === selectedDepartmentId)?._id || ""
+      }
       onChange={handleChange}
       displayEmpty
       inputProps={{ "aria-label": "Select department" }}
       fullWidth
-      disabled={!isAdminOrSuperAdmin}
       sx={{
         maxHeight: 56,
         "&.MuiList-root": {
@@ -109,7 +105,7 @@ const DepartmentMenu = () => {
         </MenuItem>
       ))}
       <Divider sx={{ mx: -1 }} />
-      <MenuItem value="add">
+      <MenuItem value="" disabled={!isAdminOrSuperAdmin}>
         <ListItemIcon>
           <AddRoundedIcon />
         </ListItemIcon>
