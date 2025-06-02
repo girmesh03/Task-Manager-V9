@@ -45,6 +45,15 @@ export const getDateIntervals = (
   // Calculate six months ago while keeping the correct timezone
   const sixMonthsAgo = today.subtract(5, "month");
 
+  // Generate array of last six months, eg. [ 'Dec', 'Jan', 'Feb', 'Mar', 'Apr', 'May' ]
+  const lastSixMonths = Array.from({ length: 6 }, (_, i) => {
+    return sixMonthsAgo.add(i, "month").format("MMM"); // 'Feb'
+  });
+
+  const sixMonthRange = Array.from({ length: 6 }, (_, i) => {
+    return sixMonthsAgo.add(i, "month").format("YYYY-MM"); // '2025-02'
+  });
+
   // Generate date range for last 30 days
   const daysInLast30 = [];
   const dateRange = Array.from({ length: 30 }, (_, i) => {
@@ -61,6 +70,8 @@ export const getDateIntervals = (
     daysInLast30,
     dateRange,
     sixMonthsAgo: sixMonthsAgo.toDate(),
+    lastSixMonths,
+    sixMonthRange,
   };
 };
 

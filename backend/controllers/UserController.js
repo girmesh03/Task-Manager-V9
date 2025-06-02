@@ -1,15 +1,25 @@
 import mongoose from "mongoose";
 import crypto from "crypto";
 import asyncHandler from "express-async-handler";
+import dayjs from "dayjs";
 import CustomError from "../errorHandler/CustomError.js";
 import Department from "../models/DepartmentModel.js";
 import User from "../models/UserModel.js";
 import Task from "../models/TaskModel.js";
+import RoutineTask from "../models/RoutineTaskModel.js";
 import TaskActivity from "../models/TaskActivityModel.js";
 import Notification from "../models/NotificationModel.js";
 
 import { sendVerificationEmail } from "../utils/SendEmail.js";
-import { getFormattedDate } from "../utils/GetDateIntervals.js";
+import {
+  getDateIntervals,
+  getFormattedDate,
+} from "../utils/GetDateIntervals.js";
+import { getLeaderboardPipeline } from "../pipelines/Dashboard.js";
+import {
+  getUserTaskStatisticsForChartPipeline,
+  getUserRoutineTaskStatisticsForChartPipeline,
+} from "../pipelines/user.js";
 
 // @desc    Create user
 // @route   POST /api/users/department/:departmentId
@@ -103,7 +113,7 @@ const createUser = asyncHandler(async (req, res, next) => {
 
 // @desc    Get all users
 // @route   GET /api/users/department/:departmentId
-// @access  Private (SuperAdmin, Admin, Manager)
+// @access  Private (SuperAdmin: any, Other: department)
 const getAllUsers = asyncHandler(async (req, res, next) => {
   const { departmentId } = req.params;
   const { page = 1, limit = 10, role } = req.query;
@@ -135,7 +145,7 @@ const getAllUsers = asyncHandler(async (req, res, next) => {
     limit: parseInt(limit),
     populate: [
       { path: "department", select: "name" },
-      { path: "managedDepartment", select: "name" }, // TODO: managedDepartment is null on the response
+      { path: "managedDepartment", select: "name" },
     ],
     sort: "-createdAt",
   };
@@ -157,32 +167,57 @@ const getAllUsers = asyncHandler(async (req, res, next) => {
 
 // @desc    Get user
 // @route   GET /api/users/department/:departmentId/user/:userId
-// @access  Private, TODO: who can access this endpoint?
+// @access  Private (SuperAdmin: any, Other: department)
 const getUserById = asyncHandler(async (req, res, next) => {
   const { departmentId, userId } = req.params;
-  const requester = req.user;
+  const { currentDate = new Date().toISOString().split("T")[0] } = req.query;
+
+  // Get date intervals
+  const dates = getDateIntervals(currentDate);
+  if (!dates) return next(new CustomError("Invalid date format", 400));
+
+  const { last30DaysStart, last30DaysEnd: today } = dates;
 
   try {
     const user = await User.findOne({
       _id: userId,
       department: departmentId,
-    }).populate("department managedDepartment");
+    })
+      .populate([
+        {
+          path: "department",
+          select: "name",
+          populate: {
+            path: "managers",
+            select: "firstName lastName fullName email position profilePicture",
+          },
+        },
+      ])
+      .select("firstName lastName email position fullName profilePicture");
 
     if (!user) {
       throw new CustomError("User not found", 404);
     }
 
-    // Authorization check
-    if (
-      requester.role !== "SuperAdmin" &&
-      !user.department.equals(requester.departmentId)
-    ) {
-      throw new CustomError("Not authorized to view this user", 403);
-    }
+    // Stat
+    const stats = await User.aggregate(
+      getLeaderboardPipeline({
+        currentStartDate: last30DaysStart,
+        currentEndDate: today,
+        departmentId: user.department._id,
+        userId: user._id,
+      })
+    );
 
     res.status(200).json({
       success: true,
-      user,
+      user: {
+        ...user.toObject({ virtuals: true }),
+        assignedTaskCount: stats[0]?.assignedTaskCount || 0,
+        routineTaskCount: stats[0]?.routineTaskCount || 0,
+        totalCompleted: stats[0]?.totalCompleted || 0,
+        rating: stats[0]?.rating || 0,
+      },
       message: "User retrieved successfully",
     });
   } catch (error) {
@@ -360,4 +395,96 @@ const deleteUserById = asyncHandler(async (req, res, next) => {
   }
 });
 
-export { createUser, getAllUsers, getUserById, updateUserById, deleteUserById };
+// @desc    Get user profile
+// @route   GET /api/users/department/:departmentId/user/:userId/profile
+// @access  Private (SuperAdmin, Admin, Manager, User)
+const getUserProfileById = asyncHandler(async (req, res, next) => {
+  const { departmentId, userId } = req.params;
+  const { currentDate = dayjs().format("YYYY-MM-DD") } = req.query;
+
+  // Get user
+  const user = await User.findOne({ _id: userId, department: departmentId })
+    .populate("department", "name")
+    .select("firstName lastName email position fullName profilePicture");
+  if (!user) {
+    return next(new CustomError("User not found", 404));
+  }
+
+  // Get date intervals
+  const dates = getDateIntervals(currentDate);
+  if (!dates) return next(new CustomError("Invalid date format", 400));
+
+  const {
+    last30DaysStart,
+    last30DaysEnd: today,
+    daysInLast30,
+    dateRange,
+  } = dates;
+
+  try {
+    const stats = await User.aggregate(
+      getLeaderboardPipeline({
+        currentStartDate: last30DaysStart,
+        currentEndDate: today,
+        departmentId: user.department._id,
+        userId: user._id,
+      })
+    );
+
+    const routineChartResult = await RoutineTask.aggregate(
+      getUserRoutineTaskStatisticsForChartPipeline({
+        currentEndDate: today,
+        currentStartDate: last30DaysStart,
+        dateRange: dateRange,
+        departmentId: user.department._id,
+        userId: user._id,
+      })
+    );
+
+    const routineChartData =
+      routineChartResult.length > 0
+        ? routineChartResult[0]
+        : { routineSeries: [] };
+
+    const assignedChartResult = await Task.aggregate(
+      getUserTaskStatisticsForChartPipeline({
+        currentStartDate: last30DaysStart,
+        currentEndDate: today,
+        dateRange,
+        departmentId: user.department._id,
+        userId: user._id,
+      })
+    );
+
+    const assignedChartData =
+      assignedChartResult.length > 0
+        ? assignedChartResult[0]
+        : { assignedSeries: [] };
+
+    res.status(200).json({
+      success: true,
+      user: {
+        ...user.toObject({ virtuals: true }),
+        assignedTaskCount: stats[0]?.assignedTaskCount || 0,
+        routineTaskCount: stats[0]?.routineTaskCount || 0,
+        totalCompleted: stats[0]?.totalCompleted || 0,
+        rating: stats[0]?.rating || 0,
+        daysInLast30,
+        ...assignedChartData,
+        ...routineChartData,
+      },
+      message: "User profile retrieved successfully",
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+export {
+  createUser,
+  getAllUsers,
+  getUserById,
+  updateUserById,
+  deleteUserById,
+  getUserProfileById,
+};

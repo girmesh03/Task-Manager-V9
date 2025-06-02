@@ -25,7 +25,7 @@ const validTransitions = {
   Pending: ["In Progress", "Completed"],
 };
 
-const TaskActivityForm = ({ taskId, taskStatus, setTabIndex }) => {
+const TaskActivityForm = ({ taskId, taskStatus, taskType, setTabIndex }) => {
   const [createActivity, { isLoading }] = useCreateTaskActivityMutation();
 
   const { handleSubmit, control, reset } = useForm({
@@ -43,8 +43,11 @@ const TaskActivityForm = ({ taskId, taskStatus, setTabIndex }) => {
         taskId,
         activityData: {
           description: data.description,
-          attachments: data.attachments,
-          statusChange: data.statusChange || undefined,
+          attachments: data.attachments || [],
+          statusChange: {
+            from: data.currentStatus,
+            to: data.statusChange,
+          },
         },
       }).unwrap();
       toast.success(response.message);
@@ -69,7 +72,7 @@ const TaskActivityForm = ({ taskId, taskStatus, setTabIndex }) => {
           textAlign="center"
           sx={{ pb: 1, borderBottom: "1px solid", borderColor: "divider" }}
         >
-          Activity Form
+          {`${taskType} Activity Form`}
         </Typography>
         <FormControl fullWidth>
           <FormLabel htmlFor="description">Description</FormLabel>
@@ -89,7 +92,7 @@ const TaskActivityForm = ({ taskId, taskStatus, setTabIndex }) => {
         </FormControl>
 
         <Divider textAlign="left">
-          <Typography variant="caption">Optional Updates</Typography>
+          <Typography variant="caption">Optional Status Update</Typography>
         </Divider>
 
         <Grid container spacing={2}>
@@ -126,6 +129,10 @@ const TaskActivityForm = ({ taskId, taskStatus, setTabIndex }) => {
           </Grid>
         </Grid>
 
+        <Divider textAlign="left">
+          <Typography variant="caption">Optional Upload Attachments</Typography>
+        </Divider>
+
         <Button
           type="submit"
           fullWidth
@@ -148,6 +155,7 @@ const TaskActivityForm = ({ taskId, taskStatus, setTabIndex }) => {
 TaskActivityForm.propTypes = {
   taskId: PropTypes.string.isRequired,
   taskStatus: PropTypes.string.isRequired,
+  taskType: PropTypes.string.isRequired,
   setTabIndex: PropTypes.func.isRequired,
 };
 

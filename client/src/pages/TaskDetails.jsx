@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useParams } from "react-router";
+import { Navigate, useParams } from "react-router";
 
 import Box from "@mui/material/Box";
 import Tab from "@mui/material/Tab";
@@ -88,7 +88,7 @@ const TaskDetails = () => {
         </TabList>
 
         {/* Task Details */}
-        <TabPanel value="1" sx={{ p: 0 }}>
+        <TabPanel value="1" sx={{ p: 0, px: 0.5 }}>
           <TaskDetailsCard task={task} />
         </TabPanel>
 
@@ -102,6 +102,11 @@ const TaskDetails = () => {
           <TaskActivityForm
             taskId={taskId}
             taskStatus={task?.status}
+            taskType={
+              task?.taskType === "AssignedTask"
+                ? "Assigned Task"
+                : "Project Task"
+            }
             setTabIndex={setTabIndex}
           />
         </TabPanel>

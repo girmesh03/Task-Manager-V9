@@ -45,7 +45,7 @@ const notificationSchema = new mongoose.Schema(
     },
     linkedDocumentType: {
       type: String,
-      enum: ["Task", "User", "Department", "TaskActivity"],
+      enum: ["Task", "User", "Department", "TaskActivity", "RoutineTask"],
       required: function () {
         return !!this.linkedDocument;
       },

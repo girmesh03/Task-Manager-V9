@@ -11,6 +11,7 @@ import DashboardRoundedIcon from "@mui/icons-material/DashboardRounded";
 import PeopleRoundedIcon from "@mui/icons-material/PeopleRounded";
 import AssignmentRoundedIcon from "@mui/icons-material/AssignmentRounded";
 // import PersonRoundedIcon from "@mui/icons-material/PersonRounded";
+import AssignedTasksIcon from "@mui/icons-material/AssignmentInd";
 // import InfoRoundedIcon from "@mui/icons-material/InfoRounded";
 
 const MenuContent = memo(() => {
@@ -25,6 +26,11 @@ const MenuContent = memo(() => {
         text: "Tasks",
         icon: <AssignmentRoundedIcon />,
         path: "/tasks",
+      },
+      {
+        text: "RoutineTasks",
+        icon: <AssignedTasksIcon />,
+        path: "/routine-tasks",
       },
       { text: "Users", icon: <PeopleRoundedIcon />, path: "/users" },
     ],

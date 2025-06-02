@@ -27,31 +27,32 @@ import MuiAutocomplete from "./MuiAutocomplete";
 import MuiMobileDatePicker from "./MuiMobileDatePicker";
 import { LoadingFallback } from "./LoadingFallback";
 
-import { priorityTypes, statusTypes } from "../utils/constants";
+import { priorityTypes } from "../utils/constants";
 
-// const validTransitions = {
-//   "To Do": ["In Progress", "Pending"],
-//   "In Progress": ["Completed", "Pending"],
-//   Completed: ["Pending"],
-//   Pending: ["In Progress", "Completed"],
-// };
-
-const CreateUpdateTask = ({ open, handleClose, title, taskToBeUpdated }) => {
-  console.log("create update task");
+const CreateUpdateTask = ({
+  open,
+  handleClose,
+  title,
+  taskToBeUpdated,
+  selectedTaskType,
+}) => {
   const departmentId = useSelector(selectSelectedDepartmentId);
 
   const [createTask] = useCreateTaskMutation();
   const [updateTask] = useUpdateTaskMutation();
 
-  const isToUpdate = taskToBeUpdated && title === "Update Task";
+  const isToUpdate = taskToBeUpdated && title === "Update Task" ? true : false;
+  const isProjectTask =
+    selectedTaskType === "ProjectTask" ||
+    taskToBeUpdated?.taskType === "ProjectTask"
+      ? true
+      : false;
 
   const {
     data = {},
     isError,
     error,
     isLoading,
-    // isFetching,
-    // isSuccess,
   } = useGetUsersQuery(
     {
       departmentId,
@@ -59,7 +60,12 @@ const CreateUpdateTask = ({ open, handleClose, title, taskToBeUpdated }) => {
       page: 1,
       limit: 10,
     },
-    { skip: !open }
+    {
+      skip:
+        !open &&
+        (selectedTaskType === "ProjectTask" ||
+          taskToBeUpdated?.taskType === "ProjectTask"),
+    }
   );
 
   const { users = [] } = data;
@@ -69,36 +75,52 @@ const CreateUpdateTask = ({ open, handleClose, title, taskToBeUpdated }) => {
     control,
     reset,
     formState: { isSubmitting },
-  } = useForm({
-    defaultValues: {
-      title: "",
-      description: "",
-      location: "",
-      dueDate: dayjs().format("YYYY-MM-DD"),
-      priority: "Medium",
-      assignedTo: [],
-    },
-  });
+  } = useForm();
 
   const onSubmit = async (formData) => {
     try {
-      let response = null;
+      let response;
+      const taskData = {
+        title: formData.title,
+        description: formData.description,
+        location: formData.location,
+        dueDate: formData.dueDate,
+        priority: formData.priority,
+        taskType: formData.taskType,
+      };
+
+      if (formData.taskType === "AssignedTask") {
+        taskData.assignedTo = formData.assignedTo;
+      } else {
+        taskData.companyInfo = {
+          name: formData.companyName,
+          phoneNumber: formData.phoneNumber,
+          address: formData.address,
+        };
+        taskData.proforma = [
+          {
+            url: "doc.pdf",
+            type: "pdf",
+          },
+        ];
+      }
+
       if (taskToBeUpdated && title === "Update Task") {
         response = await updateTask({
           departmentId,
           taskId: taskToBeUpdated._id,
-          taskData: formData,
+          taskData,
         }).unwrap();
       }
 
       if (!taskToBeUpdated && title === "Create Task") {
         response = await createTask({
           departmentId,
-          taskData: formData,
+          taskData,
         }).unwrap();
       }
 
-      console.log("response", response);
+      // console.log("response", response);
       toast.success(response.message);
       reset();
       handleClose();
@@ -108,15 +130,56 @@ const CreateUpdateTask = ({ open, handleClose, title, taskToBeUpdated }) => {
   };
 
   useEffect(() => {
-    if (!taskToBeUpdated) return;
-
-    if (taskToBeUpdated) {
-      reset({
-        ...taskToBeUpdated,
-        assignedTo: taskToBeUpdated.assignedTo.map((user) => user._id),
-      });
+    if (isToUpdate) {
+      if (isProjectTask) {
+        reset({
+          title: taskToBeUpdated.title,
+          description: taskToBeUpdated.description,
+          location: taskToBeUpdated.location,
+          dueDate: taskToBeUpdated.dueDate,
+          priority: taskToBeUpdated.priority,
+          taskType: taskToBeUpdated.taskType,
+          companyName: taskToBeUpdated.companyInfo?.name,
+          phoneNumber: taskToBeUpdated.companyInfo?.phoneNumber,
+          address: taskToBeUpdated.companyInfo?.address,
+        });
+      } else {
+        reset({
+          title: taskToBeUpdated.title,
+          description: taskToBeUpdated.description,
+          location: taskToBeUpdated.location,
+          dueDate: taskToBeUpdated.dueDate,
+          priority: taskToBeUpdated.priority,
+          taskType: taskToBeUpdated.taskType,
+          assignedTo: taskToBeUpdated?.assignedTo?.map((user) => user._id),
+        });
+      }
+    } else {
+      if (isProjectTask) {
+        reset({
+          title: "",
+          description: "",
+          location: "",
+          dueDate: dayjs().format("YYYY-MM-DD"),
+          priority: "Medium",
+          taskType: selectedTaskType,
+          companyName: "",
+          phoneNumber: "",
+          address: "",
+        });
+      } else {
+        reset({
+          title: "",
+          description: "",
+          location: "",
+          dueDate: dayjs().format("YYYY-MM-DD"),
+          priority: "Medium",
+          taskType: selectedTaskType,
+          assignedTo: [],
+        });
+      }
     }
-  }, [taskToBeUpdated, reset]);
+  }, [taskToBeUpdated, isProjectTask, isToUpdate, selectedTaskType, reset]);
 
   if (isError) return <Navigate to="/error" state={{ error }} replace />;
 
@@ -132,6 +195,7 @@ const CreateUpdateTask = ({ open, handleClose, title, taskToBeUpdated }) => {
         <LoadingFallback height="50vh" />
       ) : (
         <Grid container spacing={2} sx={{ my: 2 }}>
+          {/* title */}
           <Grid size={{ xs: 12, sm: 6 }}>
             <FormControl fullWidth>
               <FormLabel htmlFor="title">Title</FormLabel>
@@ -154,56 +218,19 @@ const CreateUpdateTask = ({ open, handleClose, title, taskToBeUpdated }) => {
                 name="dueDate"
                 type="date"
                 control={control}
-                rules={{ required: "Due date is required" }}
+                rules={{
+                  required: "Due date is required",
+                  validate: (value) => {
+                    if (value <= dayjs().format("YYYY-MM-DD")) {
+                      return "Due date must be in the future";
+                    } else {
+                      return true;
+                    }
+                  },
+                }}
               />
             </Stack>
           </Grid>
-
-          {/* assignedTo */}
-          <Grid size={{ xs: 12, sm: isToUpdate ? 7 : 12 }}>
-            <Stack direction="column" justifyContent="center" spacing={1}>
-              <Typography variant="body1" sx={{ color: "text.secondary" }}>
-                Assigned To
-              </Typography>
-              <MuiAutocomplete
-                name="assignedTo"
-                control={control}
-                options={users}
-                rules={{ required: "At least one user must be assigned" }}
-                fullWidth
-              />
-            </Stack>
-          </Grid>
-
-          {/* status */}
-          {isToUpdate && (
-            <Grid size={{ xs: 12, sm: 5 }}>
-              <Typography
-                variant="body1"
-                sx={{ mb: 1, color: "text.secondary" }}
-              >
-                Status To
-              </Typography>
-              <DropdownMenu
-                name="status"
-                control={control}
-                options={statusTypes}
-                // rules={{
-                //   validate: {
-                //     isValidTransition: (value) =>
-                //       !value ||
-                //       validTransitions[taskToBeUpdated?.status]?.includes(
-                //         value
-                //       ) ||
-                //       "Invalid status transition",
-                //     validStatus: (value) =>
-                //       value !== taskToBeUpdated?.status ||
-                //       "Cannot transition to the same status",
-                //   },
-                // }}
-              />
-            </Grid>
-          )}
 
           {/* priority */}
           <Grid size={{ xs: 12, sm: 6 }}>
@@ -233,6 +260,75 @@ const CreateUpdateTask = ({ open, handleClose, title, taskToBeUpdated }) => {
             </FormControl>
           </Grid>
 
+          {isProjectTask ? (
+            <>
+              {/* companyName */}
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <FormControl fullWidth>
+                  <FormLabel htmlFor="companyName">Company Name</FormLabel>
+                  <MuiTextField
+                    name="companyName"
+                    control={control}
+                    rules={{ required: "Company name is required" }}
+                    placeholder="Eg. Ries Engineering"
+                  />
+                </FormControl>
+              </Grid>
+
+              {/* phoneNumber */}
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <FormControl fullWidth>
+                  <FormLabel htmlFor="phoneNumber">
+                    Company Phone Number
+                  </FormLabel>
+                  <MuiTextField
+                    name="phoneNumber"
+                    control={control}
+                    rules={{
+                      required: "Phone number is required",
+                      minLength: {
+                        value: 10,
+                        message: "Phone number must be at least 10 digits",
+                      },
+                      maxLength: {
+                        value: 13,
+                        message: "Phone number must be at most 13 digits",
+                      },
+                    }}
+                    placeholder="Eg. +25199999999"
+                  />
+                </FormControl>
+              </Grid>
+
+              {/* address optional */}
+              <Grid size={{ xs: 12 }}>
+                <FormControl fullWidth>
+                  <FormLabel htmlFor="address">Company Address</FormLabel>
+                  <MuiTextField
+                    name="address"
+                    control={control}
+                    placeholder="Eg. Addis Ababa, Ethiopia"
+                  />
+                </FormControl>
+              </Grid>
+            </>
+          ) : (
+            <Grid size={{ xs: 12 }}>
+              <Stack direction="column" justifyContent="center" spacing={1}>
+                <Typography variant="body1" sx={{ color: "text.secondary" }}>
+                  Assigned To
+                </Typography>
+                <MuiAutocomplete
+                  name="assignedTo"
+                  control={control}
+                  options={users}
+                  rules={{ required: "At least one user must be assigned" }}
+                  fullWidth
+                />
+              </Stack>
+            </Grid>
+          )}
+
           {/* description */}
           <Grid size={{ xs: 12 }}>
             <FormControl fullWidth>
@@ -258,6 +354,7 @@ CreateUpdateTask.propTypes = {
   handleClose: PropTypes.func.isRequired,
   title: PropTypes.string.isRequired,
   taskToBeUpdated: PropTypes.object,
+  selectedTaskType: PropTypes.string.isRequired,
 };
 
 export default CreateUpdateTask;

@@ -1,7 +1,5 @@
-// react
 import { useLocation } from "react-router";
 
-// components
 import NotFound from "./NotFound";
 
 const ErrorPage = () => {
@@ -9,7 +7,7 @@ const ErrorPage = () => {
   const error = location.state?.error || "An unknown error occurred";
   console.log(error);
 
-  if (error?.status === 403) {
+  if (error?.status === 404) {
     return <NotFound />;
   }
 

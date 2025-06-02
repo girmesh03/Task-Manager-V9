@@ -31,10 +31,12 @@ const taskSchema = new mongoose.Schema(
       validate: {
         validator: function (value) {
           const now = getFormattedDate(new Date(), 0);
-          const formattedDueDate = getFormattedDate(value, 0);
+          const formattedDueDate = getFormattedDate(new Date(value), 0);
 
           if (this.isNew) return formattedDueDate > now;
-          return formattedDueDate > getFormattedDate(this.createdAt, 0);
+          return (
+            formattedDueDate > getFormattedDate(new Date(this.createdAt), 0)
+          );
         },
         message: function () {
           return this?.isNew
@@ -109,7 +111,6 @@ taskSchema.plugin(mongoosePaginate);
 
 // ===================== Auto-Status Updates =====================
 taskSchema.pre("save", async function (next) {
-  console.log("pre saving task");
   const session = this.$session();
   const now = getFormattedDate(new Date(), 0);
 

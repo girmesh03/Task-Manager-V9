@@ -14,6 +14,7 @@ import {
 } from "../utils/GenerateTokens.js";
 
 import { getFormattedDate } from "../utils/GetDateIntervals.js";
+import dayjs from "dayjs";
 
 // @desc Login
 // @route POST /api/auth/login
@@ -70,7 +71,7 @@ const verifyEmail = asyncHandler(async (req, res, next) => {
   const user = await User.findOne({
     verificationToken: token,
     verificationTokenExpiry: {
-      $gt: getFormattedDate(new Date(), 0),
+      $gt: getFormattedDate(dayjs().format("YYYY-MM-DD"), 0),
     },
   }).select("+verificationToken +verificationTokenExpiry");
 
@@ -115,14 +116,14 @@ const logout = asyncHandler(async (req, res) => {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "strict",
-    expires: getFormattedDate(new Date(), 0),
+    expires: getFormattedDate(dayjs().format("YYYY-MM-DD"), 0),
   });
 
   res.cookie("refresh_token", "", {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "strict",
-    expires: getFormattedDate(new Date(), 0),
+    expires: getFormattedDate(dayjs().format("YYYY-MM-DD"), 0),
   });
 
   res.status(200).json({ success: true, message: "Logged out successfully" });
@@ -166,7 +167,9 @@ const resetPassword = asyncHandler(async (req, res, next) => {
 
   const user = await User.findOne({
     resetPasswordToken: resetToken,
-    resetPasswordExpiry: { $gt: getFormattedDate(new Date(), 0) },
+    resetPasswordExpiry: {
+      $gt: getFormattedDate(dayjs().format("YYYY-MM-DD"), 0),
+    },
   });
 
   if (!user) return next(new CustomError("Invalid/expired token", 400));
@@ -179,10 +182,10 @@ const resetPassword = asyncHandler(async (req, res, next) => {
   await sendRestSuccessEmail(user.email);
 
   res.cookie("access_token", "", {
-    expires: getFormattedDate(new Date(), 0),
+    expires: getFormattedDate(dayjs().format("YYYY-MM-DD"), 0),
   });
   res.cookie("refresh_token", "", {
-    expires: getFormattedDate(new Date(), 0),
+    expires: getFormattedDate(dayjs().format("YYYY-MM-DD"), 0),
   });
 
   res.status(200).json({

@@ -15,16 +15,16 @@ export const setCredentials = createAsyncThunk(
   async (userData, { rejectWithValue }) => {
     try {
       const { data } = await makeRequest.post("/auth/login", userData);
-      toast.success("Login successful!", {
-        position: "bottom-right",
-        autoClose: 3000,
-      });
+      // toast.success("Login successful!", {
+      //   position: "bottom-right",
+      //   autoClose: 3000,
+      // });
       return data;
     } catch (error) {
-      toast.error(error.response?.data?.message || "Login failed", {
-        position: "bottom-right",
-        autoClose: 5000,
-      });
+      // toast.error(error.response?.data?.message || "Login failed", {
+      //   position: "bottom-right",
+      //   autoClose: 5000,
+      // });
       return rejectWithValue(error.response?.data);
     }
   }

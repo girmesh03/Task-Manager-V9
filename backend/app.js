@@ -17,6 +17,7 @@ import UserRoutes from "./routes/UserRoutes.js";
 import DepartmentRoutes from "./routes/DepartmentRoutes.js";
 import TaskRoutes from "./routes/TaskRoutes.js";
 import RoutineTaskRoutes from "./routes/RoutineTaskRoutes.js";
+import StatisticsRoutes from "./routes/StatisticsRoutes.js";
 
 // Initialize app
 const app = express();
@@ -34,6 +35,7 @@ app.use("/api/users", UserRoutes);
 app.use("/api/departments", DepartmentRoutes);
 app.use("/api/tasks", TaskRoutes);
 app.use("/api/routine-tasks", RoutineTaskRoutes);
+app.use("/api/statistics", StatisticsRoutes);
 
 // Error handling
 app.all("*", (req, res, next) => {
