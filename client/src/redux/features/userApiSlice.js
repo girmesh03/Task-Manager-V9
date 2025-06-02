@@ -13,15 +13,22 @@ export const userApiSlice = apiSlice.injectEndpoints({
         pagination: response.pagination,
       }),
 
-      providesTags: (result) =>
-        result?.users?.length
-          ? [
-              { type: "Users", id: "LIST" },
-              ...result.users.map(({ _id }) => ({ type: "Users", id: _id })),
-            ]
-          : [{ type: "Users", id: "LIST" }],
+      providesTags: (result, error, { departmentId }) => [
+        { type: "Users", id: `DEPARTMENT-${departmentId}` },
+        ...(result?.users?.map((user) => ({ type: "Users", id: user._id })) ||
+          []),
+      ],
+    }),
+    getUserProfile: builder.query({
+      query: ({ departmentId, userId, currentDate }) => ({
+        url: `/users/department/${departmentId}/user/${userId}/profile`,
+        params: { currentDate },
+      }),
+      providesTags: (result, error, { userId }) => [
+        { type: "User", id: userId },
+      ],
     }),
   }),
 });
 
-export const { useGetUsersQuery } = userApiSlice;
+export const { useGetUsersQuery, useGetUserProfileQuery } = userApiSlice;

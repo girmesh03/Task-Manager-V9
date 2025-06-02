@@ -39,6 +39,7 @@ export const taskApiSlice = apiSlice.injectEndpoints({
       }),
       invalidatesTags: (result, error, { departmentId }) => [
         { type: "Tasks", id: `DEPARTMENT-${departmentId}` },
+        "Dashboard",
       ],
     }),
 
@@ -48,8 +49,10 @@ export const taskApiSlice = apiSlice.injectEndpoints({
         method: "PUT",
         body: taskData,
       }),
-      invalidatesTags: (result, error, { taskId }) => [
+      invalidatesTags: (result, error, { departmentId, taskId }) => [
+        { type: "Tasks", id: `DEPARTMENT-${departmentId}` },
         { type: "Tasks", id: taskId },
+        "Dashboard",
       ],
     }),
 
@@ -58,9 +61,30 @@ export const taskApiSlice = apiSlice.injectEndpoints({
         url: `/tasks/department/${departmentId}/task/${taskId}`,
         method: "DELETE",
       }),
-      invalidatesTags: (result, error, { taskId }) => [
+      invalidatesTags: (result, error, { departmentId, taskId }) => [
+        { type: "Tasks", id: `DEPARTMENT-${departmentId}` },
         { type: "Tasks", id: taskId },
+        "Dashboard",
       ],
+      async onQueryStarted(
+        { departmentId, taskId },
+        { dispatch, queryFulfilled }
+      ) {
+        const patchResult = dispatch(
+          taskApiSlice.util.updateQueryData(
+            "getTasks",
+            { departmentId },
+            (draft) => {
+              draft.tasks = draft.tasks.filter((task) => task._id !== taskId);
+            }
+          )
+        );
+        try {
+          await queryFulfilled;
+        } catch {
+          patchResult.undo();
+        }
+      },
     }),
 
     createTaskActivity: builder.mutation({
@@ -71,7 +95,28 @@ export const taskApiSlice = apiSlice.injectEndpoints({
       }),
       invalidatesTags: (result, error, { taskId }) => [
         { type: "Tasks", id: taskId },
+        "Dashboard",
       ],
+
+      async onQueryStarted(
+        { taskId, activityData },
+        { dispatch, queryFulfilled }
+      ) {
+        const patchResult = dispatch(
+          taskApiSlice.util.updateQueryData(
+            "getTaskDetails",
+            { taskId },
+            (draft) => {
+              draft.activities.push(activityData);
+            }
+          )
+        );
+        try {
+          await queryFulfilled;
+        } catch {
+          patchResult.undo();
+        }
+      },
     }),
 
     deleteTaskActivity: builder.mutation({
@@ -81,9 +126,32 @@ export const taskApiSlice = apiSlice.injectEndpoints({
       }),
       invalidatesTags: (result, error, { taskId }) => [
         { type: "Tasks", id: taskId },
+        "Dashboard",
       ],
+      async onQueryStarted(
+        { taskId, activityId },
+        { dispatch, queryFulfilled }
+      ) {
+        const patchResult = dispatch(
+          taskApiSlice.util.updateQueryData(
+            "getTaskDetails",
+            { taskId },
+            (draft) => {
+              draft.activities = draft.activities.filter(
+                (activity) => activity._id !== activityId
+              );
+            }
+          )
+        );
+        try {
+          await queryFulfilled;
+        } catch {
+          patchResult.undo();
+        }
+      },
     }),
   }),
+  overrideExisting : true,
 });
 
 export const {
