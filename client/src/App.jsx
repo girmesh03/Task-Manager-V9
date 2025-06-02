@@ -29,7 +29,9 @@ const Home = lazy(() => import("./pages/Home"));
 const Login = lazy(() => import("./pages/Login"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const Tasks = lazy(() => import("./pages/Tasks"));
+const RoutineTasks = lazy(() => import("./pages/RoutineTasks"));
 const TaskDetails = lazy(() => import("./pages/TaskDetails"));
+const RoutineTaskDetails = lazy(() => import("./pages/RoutineTaskDetails"));
 const Users = lazy(() => import("./pages/Users"));
 const UserProfile = lazy(() => import("./pages/UserProfile"));
 const AdminPanel = lazy(() => import("./pages/AdminPanel"));
@@ -56,7 +58,12 @@ const router = createBrowserRouter([
             children: [
               { path: "dashboard", Component: Dashboard },
               { path: "tasks", Component: Tasks },
+              { path: "routine-tasks", Component: RoutineTasks },
               { path: "tasks/:taskId/details", Component: TaskDetails },
+              {
+                path: "routine-tasks/:taskId/details",
+                Component: RoutineTaskDetails,
+              },
               { path: "users", Component: Users },
               { path: "users/:userId/profile", Component: UserProfile },
               { path: "admin-panel", Component: AdminPanel },
