@@ -33,6 +33,7 @@ router.post(
 router.get(
   "/department/:departmentId",
   authorizeRoles("SuperAdmin", "Admin", "Manager", "User"),
+  verifyDepartmentAccess,
   getAllTasks
 );
 
@@ -40,6 +41,7 @@ router.get(
 router.get(
   "/department/:departmentId/task/:taskId",
   authorizeRoles("SuperAdmin", "Admin", "Manager", "User"),
+  verifyDepartmentAccess,
   getTaskById
 );
 

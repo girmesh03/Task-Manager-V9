@@ -6,9 +6,14 @@ import {
   getUserById,
   updateUserById,
   deleteUserById,
+  getUserProfileById,
 } from "../controllers/UserController.js";
 
-import { verifyJWT, authorizeRoles } from "../middlewares/authMiddleware.js";
+import {
+  verifyJWT,
+  authorizeRoles,
+  verifyDepartmentAccess,
+} from "../middlewares/authMiddleware.js";
 
 const router = express.Router();
 
@@ -18,6 +23,7 @@ router.use(verifyJWT); // Apply JWT to all following routes
 router.post(
   "/department/:departmentId",
   authorizeRoles("SuperAdmin", "Admin"),
+  verifyDepartmentAccess,
   createUser
 );
 
@@ -25,6 +31,7 @@ router.post(
 router.get(
   "/department/:departmentId",
   authorizeRoles("SuperAdmin", "Admin", "Manager", "User"),
+  verifyDepartmentAccess,
   getAllUsers
 );
 
@@ -33,6 +40,7 @@ router.get(
 router.get(
   "/department/:departmentId/user/:userId",
   authorizeRoles("SuperAdmin", "Admin", "Manager", "User"),
+  verifyDepartmentAccess,
   getUserById
 );
 
@@ -40,6 +48,7 @@ router.get(
 router.put(
   "/department/:departmentId/user/:userId",
   authorizeRoles("SuperAdmin", "Admin", "User"),
+  verifyDepartmentAccess,
   updateUserById
 );
 
@@ -47,7 +56,16 @@ router.put(
 router.delete(
   "/department/:departmentId/user/:userId",
   authorizeRoles("SuperAdmin", "Admin"),
+  verifyDepartmentAccess,
   deleteUserById
+);
+
+// Get a user profile
+router.get(
+  "/department/:departmentId/user/:userId/profile",
+  authorizeRoles("SuperAdmin", "Admin", "Manager", "User"),
+  verifyDepartmentAccess,
+  getUserProfileById
 );
 
 export default router;
