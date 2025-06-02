@@ -67,7 +67,37 @@ const routineTaskSchema = new mongoose.Schema(
   }
 );
 
+// ===================== Indexes =====================
+routineTaskSchema.index({ department: 1, date: -1 });
+routineTaskSchema.index({ performedBy: 1, date: -1 });
+routineTaskSchema.index({ date: -1 });
+
+// =================== Plugins =====================
 routineTaskSchema.plugin(mongoosePaginate);
+
+// ================== middlewares =====================
+routineTaskSchema.pre(
+  "deleteOne",
+  { document: true, query: false },
+  async function (next) {
+    const session = this.$session();
+    const taskId = this._id;
+
+    try {
+      await mongoose
+        .model("Notification")
+        .deleteMany({
+          linkedDocument: taskId,
+          linkedDocumentType: "RoutineTask",
+        })
+        .session(session);
+
+      next();
+    } catch (err) {
+      next(err);
+    }
+  }
+);
 
 const RoutineTask = mongoose.model("RoutineTask", routineTaskSchema);
 
