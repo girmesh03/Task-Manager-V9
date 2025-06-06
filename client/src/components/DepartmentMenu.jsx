@@ -1,16 +1,17 @@
+import { useState, useEffect } from "react";
 import { Navigate } from "react-router";
-
 import { styled } from "@mui/material/styles";
 import MuiAvatar from "@mui/material/Avatar";
 import MuiListItemAvatar from "@mui/material/ListItemAvatar";
 import MenuItem from "@mui/material/MenuItem";
 import ListItemText from "@mui/material/ListItemText";
-import ListItemIcon from "@mui/material/ListItemIcon";
 import ListSubheader from "@mui/material/ListSubheader";
-import Divider from "@mui/material/Divider";
 import CircularProgress from "@mui/material/CircularProgress";
 import Toolbar from "@mui/material/Toolbar";
 import Select, { selectClasses } from "@mui/material/Select";
+import Pagination from "@mui/material/Pagination";
+import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
 import AddRoundedIcon from "@mui/icons-material/AddRounded";
 import DevicesRoundedIcon from "@mui/icons-material/DevicesRounded";
 
@@ -36,10 +37,15 @@ const ListItemAvatar = styled(MuiListItemAvatar)({
   marginRight: 12,
 });
 
+const ITEMS_PER_PAGE = 10;
+const DROPDOWN_MAX_HEIGHT = 300;
+
 const DepartmentMenu = () => {
   const { isAdminOrSuperAdmin } = useAuth();
   const selectedDepartmentId = useSelector(selectSelectedDepartmentId);
   const dispatch = useDispatch();
+
+  const [page, setPage] = useState(1);
 
   const {
     data = {},
@@ -47,11 +53,12 @@ const DepartmentMenu = () => {
     isError,
     error,
   } = useGetAllDepartmentsQuery(
-    { page: 1, limit: 10 },
+    { page, limit: ITEMS_PER_PAGE },
     { refetchOnMountOrArgChange: true }
   );
 
-  const { departments = [] } = data;
+  const { departments = [], pagination = {} } = data;
+  const { totalPages = 1 } = pagination;
 
   const handleChange = (event) => {
     event.preventDefault();
@@ -60,58 +67,87 @@ const DepartmentMenu = () => {
     dispatch(setSelectedDepartmentId(newDepartment));
   };
 
-  if (isLoading)
+  const handlePageChange = (event, value) => {
+    setPage(value);
+  };
+
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [totalPages, page]);
+
+  if (isLoading) {
     return (
       <Toolbar variant="dense" sx={{ justifyContent: "center" }}>
         <CircularProgress size={20} disableShrink />
       </Toolbar>
     );
+  }
 
   if (isError) return <Navigate to="/error" state={{ error }} replace />;
 
   return (
-    <Select
-      labelId="department-select"
-      id="company-department-select"
-      value={
-        departments.find((dept) => dept._id === selectedDepartmentId)?._id || ""
-      }
-      onChange={handleChange}
-      displayEmpty
-      inputProps={{ "aria-label": "Select department" }}
-      fullWidth
-      sx={{
-        maxHeight: 56,
-        "&.MuiList-root": {
-          p: "81px",
-        },
-        [`& .${selectClasses.select}`]: {
-          display: "flex",
-          alignItems: "center",
-          gap: "2px",
-          pl: 1,
-        },
-      }}
-    >
-      <ListSubheader sx={{ pt: 0 }}>Departments</ListSubheader>
-      {departments?.map((dept) => (
-        <MenuItem key={dept._id} value={dept._id} sx={{ mb: 1 }}>
-          <ListItemAvatar>
-            <Avatar alt={dept.name}>
-              <DevicesRoundedIcon sx={{ fontSize: "1rem" }} />
-            </Avatar>
-          </ListItemAvatar>
-          <ListItemText primary={dept.name} secondary={dept.name} />
-        </MenuItem>
-      ))}
-      <Divider sx={{ mx: -1 }} />
-      <MenuItem value="" disabled={!isAdminOrSuperAdmin}>
-        <ListItemIcon>
-          <AddRoundedIcon />
-        </ListItemIcon>
-        <ListItemText primary="Add department" />
-      </MenuItem>
-    </Select>
+    <Box>
+      <Select
+        labelId="department-select"
+        id="company-department-select"
+        value={
+          departments.find((dept) => dept._id === selectedDepartmentId)?._id ||
+          ""
+        }
+        onChange={handleChange}
+        // displayEmpty
+        inputProps={{ "aria-label": "Select department" }}
+        fullWidth
+        MenuProps={{
+          PaperProps: {
+            style: { maxHeight: DROPDOWN_MAX_HEIGHT, overflowY: "auto" },
+          },
+        }}
+        sx={{
+          mb: 1,
+          [`& .${selectClasses.select}`]: {
+            display: "flex",
+            alignItems: "center",
+            gap: "2px",
+            pl: 1,
+          },
+        }}
+      >
+        <ListSubheader sx={{ pt: 0 }}>Departments</ListSubheader>
+        {departments.map((dept) => (
+          <MenuItem key={dept._id} value={dept._id} sx={{ mb: 1 }}>
+            <ListItemAvatar>
+              <Avatar alt={dept.name}>
+                <DevicesRoundedIcon sx={{ fontSize: "1rem" }} />
+              </Avatar>
+            </ListItemAvatar>
+            <ListItemText primary={dept.name} secondary={dept.name} />
+          </MenuItem>
+        ))}
+        <Box sx={{ display: "flex", justifyContent: "center", p: 1 }}>
+          <Pagination
+            count={totalPages}
+            page={page}
+            onChange={handlePageChange}
+            size="small"
+          />
+        </Box>
+      </Select>
+      {isAdminOrSuperAdmin && (
+        <Button
+          variant="outlined"
+          fullWidth
+          startIcon={<AddRoundedIcon />}
+          onClick={() => {
+            // handle add department action here
+          }}
+        >
+          Add Department
+        </Button>
+      )}
+    </Box>
   );
 };
 

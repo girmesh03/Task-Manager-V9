@@ -29,6 +29,8 @@ const breadcrumbNameMap = {
   "/routine-tasks/:taskId/details": "Routine Task Details",
   "/users": "Users",
   "/users/:userId/profile": "User Profile",
+  // "/admin-panel": "Admin Panel",
+  "/reports": "Reports",
 };
 
 // Check if a segment is an ID (MongoDB ObjectID)
