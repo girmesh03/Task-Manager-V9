@@ -27,6 +27,9 @@ const ProtectedRoute = lazy(() => import("./routes/ProtectedRoute"));
 
 const Home = lazy(() => import("./pages/Home"));
 const Login = lazy(() => import("./pages/Login"));
+const VerifyEmail = lazy(() => import("./pages/VerifyEmail"));
+const ResetPassword = lazy(() => import("./pages/ResetPassword"));
+const ForgotPassword = lazy(() => import("./pages/ForgotPassword"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const Tasks = lazy(() => import("./pages/Tasks"));
 const RoutineTasks = lazy(() => import("./pages/RoutineTasks"));
@@ -35,6 +38,7 @@ const RoutineTaskDetails = lazy(() => import("./pages/RoutineTaskDetails"));
 const Users = lazy(() => import("./pages/Users"));
 const UserProfile = lazy(() => import("./pages/UserProfile"));
 const AdminPanel = lazy(() => import("./pages/AdminPanel"));
+const Reports = lazy(() => import("./pages/Reports"));
 const ErrorPage = lazy(() => import("./pages/ErrorPage"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
@@ -48,6 +52,9 @@ const router = createBrowserRouter([
         children: [
           { index: true, Component: Home },
           { path: "login", Component: Login },
+          { path: "verify-email", Component: VerifyEmail },
+          { path: "reset-password/:resetToken", Component: ResetPassword },
+          { path: "forgot-password", Component: ForgotPassword },
         ],
       },
       {
@@ -67,6 +74,7 @@ const router = createBrowserRouter([
               { path: "users", Component: Users },
               { path: "users/:userId/profile", Component: UserProfile },
               { path: "admin-panel", Component: AdminPanel },
+              { path: "reports", Component: Reports },
             ],
           },
         ],

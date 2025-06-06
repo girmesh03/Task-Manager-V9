@@ -1,21 +1,18 @@
 import { useCallback, useMemo, useState } from "react";
 import { Navigate } from "react-router";
+import PropTypes from "prop-types";
 
 import Container from "@mui/material/Container";
-import Typography from "@mui/material/Typography";
 import Grid from "@mui/material/Grid2";
 
 import { useSelector } from "react-redux";
-import { selectSelectedDepartmentId } from "../redux/features/authSlice";
-import { useGetUsersStatQuery } from "../redux/features/userApiSlice";
+import { useGetRoutineTaskReportsQuery } from "../redux/features/reportApiSlice";
 import { selectFilters } from "../redux/features/filtersSlice";
 
-import MuiDataGrid from "../components/MuiDataGrid";
-import { LoadingFallback } from "../components/LoadingFallback";
-import { UserColumns } from "../utils/userColumns";
+import MuiDataGrid from "./MuiDataGrid";
+import { RoutineColumns } from "../utils/reportColumns";
 
-const Users = () => {
-  const departmentId = useSelector(selectSelectedDepartmentId);
+const RoutineTaskReportGrid = ({ departmentId }) => {
   const filters = useSelector(selectFilters);
   const { selectedDate } = filters;
 
@@ -25,17 +22,19 @@ const Users = () => {
   });
 
   const {
-    data: usersStatData,
+    data: routineData,
     isError,
     error,
     isLoading,
     isFetching,
     // isSuccess,
-  } = useGetUsersStatQuery({
+  } = useGetRoutineTaskReportsQuery({
     departmentId,
     page: paginationModel.page + 1, // API might be 1-indexed for page
     limit: paginationModel.pageSize,
     currentDate: selectedDate,
+    // status: "",
+    // taskType: "",
   });
 
   const handlePaginationModelChange = useCallback((newModel) => {
@@ -43,24 +42,21 @@ const Users = () => {
   }, []);
 
   // Memoize rows and rowCount to prevent unnecessary re-renders of DataGrid
-  const rows = useMemo(() => usersStatData?.rows || [], [usersStatData?.rows]);
+  const rows = useMemo(() => routineData?.rows || [], [routineData?.rows]);
   const rowCount = useMemo(
-    () => usersStatData?.rowCount || 0,
-    [usersStatData?.rowCount]
+    () => routineData?.rowCount || 0,
+    [routineData?.rowCount]
   );
 
   if (isError) return <Navigate to="/error" state={{ error }} replace />;
 
   return (
-    <Container maxWidth="lg" sx={{ px: { xs: 0.5, sm: 2 }, my: 2 }}>
-      <Typography component="h4" variant="h6">
-        Users
-      </Typography>
+    <Container maxWidth="lg" sx={{ px: { xs: 0.5, sm: 2 }, py: 2 }}>
       <Grid container spacing={2} columns={12}>
         <Grid size={{ xs: 12 }}>
           <MuiDataGrid
             rows={rows}
-            columns={UserColumns} // Make sure UserColumns is defined
+            columns={RoutineColumns}
             loading={isLoading || isFetching}
             rowCount={rowCount}
             paginationModel={paginationModel}
@@ -72,4 +68,8 @@ const Users = () => {
   );
 };
 
-export default Users;
+RoutineTaskReportGrid.propTypes = {
+  departmentId: PropTypes.string.isRequired,
+};
+
+export default RoutineTaskReportGrid;

@@ -20,7 +20,7 @@ router.use("/forgot-password", authLimiter);
 router.use("/reset-password/:resetToken", authLimiter);
 
 router.post("/login", login);
-router.get("/verify-email", verifyEmail);
+router.post("/verify-email", verifyEmail);
 router.post("/logout", logout);
 router.post("/forgot-password", forgotPassword);
 router.post("/reset-password/:resetToken", resetPassword);

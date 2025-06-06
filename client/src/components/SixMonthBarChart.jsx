@@ -15,9 +15,6 @@ const SixMonthBarChart = ({ interval, seriesData, lastSixMonths }) => {
   //   (theme.vars || theme).palette.primary.contrastText,
   // ];
 
-  console.log("seriesData", seriesData);
-  console.log("lastSixMonths", lastSixMonths);
-
   return (
     <Card variant="outlined" sx={{ height: "100%" }}>
       <CardContent

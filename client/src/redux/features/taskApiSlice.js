@@ -151,7 +151,7 @@ export const taskApiSlice = apiSlice.injectEndpoints({
       },
     }),
   }),
-  overrideExisting : true,
+  overrideExisting: true,
 });
 
 export const {

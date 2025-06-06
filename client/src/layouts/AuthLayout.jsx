@@ -1,5 +1,5 @@
 import { useState, Suspense } from "react";
-import { Link, Outlet, useLocation } from "react-router";
+import { Link, Navigate, Outlet, useLocation } from "react-router";
 import { toast } from "react-toastify";
 
 import Box from "@mui/material/Box";
@@ -60,6 +60,12 @@ const AuthLayout = () => {
       handleClose();
     }
   };
+
+  if (isAuthenticated) {
+    if (pathname !== "/") {
+      return <Navigate to="/dashboard" replace />;
+    }
+  }
 
   return (
     <Box height="100%" display="flex" flexDirection="column">

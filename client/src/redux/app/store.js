@@ -3,6 +3,7 @@ import { persistStore, persistReducer, createTransform } from "redux-persist";
 import storage from "redux-persist/lib/storage";
 import { apiSlice } from "../features/apiSlice";
 import authReducer from "../features/authSlice";
+import filtersReducer from "../features/filtersSlice";
 
 // Transform to safely persist only necessary auth state
 const authTransform = createTransform(
@@ -28,6 +29,7 @@ export const store = configureStore({
   reducer: {
     [apiSlice.reducerPath]: apiSlice.reducer,
     auth: persistedAuthReducer,
+    filters: filtersReducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({

@@ -91,12 +91,12 @@ const StatisticsCard = ({
           <Chip size="small" color={color} label={`${trendValues[trend]}%`} />
         </Stack>
         <SparkLineChart
-          colors={[chartColor]}
+          color={chartColor}
           data={data}
           area
           showHighlight
           showTooltip
-          curve="natural"
+          curve="bumpX" // other options: ["bumpX","bumpY","catmullRom","linear","monotoneX","monotoneY","natural","step","stepAfter","stepBefore"].
           height={30}
           xAxis={{
             scaleType: "band",

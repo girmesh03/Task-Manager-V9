@@ -40,7 +40,9 @@ const PerformancePieChart = ({ performance }) => {
             Performance
           </Typography>
           {hasData && (
-            <Typography variant="body2">{`${performanceScore}%`}</Typography>
+            <Typography variant="body2">{`${performanceScore.toFixed(
+              1
+            )}%`}</Typography>
           )}
         </Stack>
 
@@ -79,7 +81,7 @@ const PerformancePieChart = ({ performance }) => {
                 },
               },
             ]}
-            // width={300}
+            width={300}
             height={250}
             sx={{ flexGrow: 1 }}
             slotProps={{

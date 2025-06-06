@@ -154,7 +154,7 @@ const CreateUpdateRoutineTask = ({
       isSubmitting={isSubmitting || isUpdating}
     >
       <Grid container spacing={1} sx={{ my: 2 }}>
-        <Grid size={{ xs: 12 }} sx={{ display: "flex", justifyContent: "end" }}>
+        <Grid size={{ xs: 6 }} sx={{ ml: "auto" }}>
           <MuiMobileDatePicker
             name="date"
             type="date"
@@ -166,7 +166,6 @@ const CreateUpdateRoutineTask = ({
                   ? "Date cannot be in the future"
                   : true,
             }}
-            sx={{ maxWidth: "50%" }}
           />
         </Grid>
 

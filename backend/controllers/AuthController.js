@@ -61,7 +61,7 @@ const login = asyncHandler(async (req, res, next) => {
 });
 
 // @desc Verify user email
-// @route GET /api/auth/verify-email
+// @route POST /api/auth/verify-email
 // @access Public
 const verifyEmail = asyncHandler(async (req, res, next) => {
   const { token } = req.body;
@@ -136,17 +136,30 @@ const forgotPassword = asyncHandler(async (req, res, next) => {
   const { email } = req.body;
   const emailRegex = /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/;
 
+  // check if email is provided
+  if (!email?.trim()) {
+    return next(new CustomError("Email is required", 400));
+  }
+
+  // check if email is valid
   if (!emailRegex.test(email)) {
     return next(new CustomError("Invalid email format", 400));
   }
 
+  // check if email exists
   const user = await User.findOne({ email: email.toLowerCase() });
-  if (user) {
-    user.generatePasswordResetToken();
-    await user.save();
-    const resetURL = `${process.env.CLIENT_URL}/reset-password/${user.resetPasswordToken}`;
-    await sendResetPasswordEmail(user.email, resetURL);
+  if (!user) {
+    return next(new CustomError("Account does not exist", 404));
   }
+  if (!user.isVerified) {
+    return next(new CustomError("Please verify your email first", 403));
+  }
+
+  // generate reset token
+  user.generatePasswordResetToken();
+  await user.save();
+  const resetURL = `${process.env.CLIENT_URL}/reset-password/${user.resetPasswordToken}`;
+  await sendResetPasswordEmail(user.email, resetURL);
 
   res.status(200).json({
     success: true,
@@ -173,6 +186,10 @@ const resetPassword = asyncHandler(async (req, res, next) => {
   });
 
   if (!user) return next(new CustomError("Invalid/expired token", 400));
+
+  if (!user.isVerified) {
+    return next(new CustomError("Please verify your email first", 403));
+  }
 
   user.password = password;
   user.resetPasswordToken = undefined;

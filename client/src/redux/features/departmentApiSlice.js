@@ -2,16 +2,6 @@ import { apiSlice } from "./apiSlice";
 
 export const departmentApiSlice = apiSlice.injectEndpoints({
   endpoints: (builder) => ({
-    // Create Department (SuperAdmin)
-    createDepartment: builder.mutation({
-      query: (departmentData) => ({
-        url: "/departments",
-        method: "POST",
-        body: departmentData,
-      }),
-      invalidatesTags: ["Departments"],
-    }),
-
     // Get All Departments (Paginated), (SuperAdmin/Admin)
     getAllDepartments: builder.query({
       query: ({ page = 1, limit = 10 }) => ({
@@ -23,6 +13,16 @@ export const departmentApiSlice = apiSlice.injectEndpoints({
         departments: response.departments,
         pagination: response.pagination,
       }),
+    }),
+
+    // Create Department (SuperAdmin)
+    createDepartment: builder.mutation({
+      query: (departmentData) => ({
+        url: "/departments",
+        method: "POST",
+        body: departmentData,
+      }),
+      invalidatesTags: ["Departments"],
     }),
 
     // Get Single Department by ID
@@ -64,8 +64,8 @@ export const departmentApiSlice = apiSlice.injectEndpoints({
 });
 
 export const {
-  useCreateDepartmentMutation,
   useGetAllDepartmentsQuery,
+  useCreateDepartmentMutation,
   useLazyGetAllDepartmentsQuery,
   useGetDepartmentByIdQuery,
   useLazyGetDepartmentByIdQuery,
