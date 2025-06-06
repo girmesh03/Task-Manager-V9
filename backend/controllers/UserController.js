@@ -1,7 +1,7 @@
 import mongoose from "mongoose";
 import crypto from "crypto";
-import asyncHandler from "express-async-handler";
 import dayjs from "dayjs";
+import asyncHandler from "express-async-handler";
 import CustomError from "../errorHandler/CustomError.js";
 import Department from "../models/DepartmentModel.js";
 import User from "../models/UserModel.js";
@@ -9,7 +9,6 @@ import Task from "../models/TaskModel.js";
 import RoutineTask from "../models/RoutineTaskModel.js";
 import TaskActivity from "../models/TaskActivityModel.js";
 import Notification from "../models/NotificationModel.js";
-
 import { sendVerificationEmail } from "../utils/SendEmail.js";
 import {
   getDateIntervals,
@@ -19,6 +18,7 @@ import { getLeaderboardPipeline } from "../pipelines/Dashboard.js";
 import {
   getUserTaskStatisticsForChartPipeline,
   getUserRoutineTaskStatisticsForChartPipeline,
+  fetchUserStatistics,
 } from "../pipelines/user.js";
 
 // @desc    Create user
@@ -116,12 +116,14 @@ const createUser = asyncHandler(async (req, res, next) => {
 // @access  Private (SuperAdmin: any, Other: department)
 const getAllUsers = asyncHandler(async (req, res, next) => {
   const { departmentId } = req.params;
-  const { page = 1, limit = 10, role } = req.query;
+  const { page = 1, limit = 10, role = "User" } = req.query;
   const requester = req.user;
   const filter = { isActive: true };
 
   // Validate department
-  const department = await Department.findById(departmentId);
+  const department = await Department.findById(departmentId).populate(
+    "memberCount"
+  );
   if (!department) {
     return next(new CustomError("Department not found", 404));
   }
@@ -147,6 +149,7 @@ const getAllUsers = asyncHandler(async (req, res, next) => {
       { path: "department", select: "name" },
       { path: "managedDepartment", select: "name" },
     ],
+    select: "-tokenVersion -role",
     sort: "-createdAt",
   };
 
@@ -400,7 +403,7 @@ const deleteUserById = asyncHandler(async (req, res, next) => {
 // @access  Private (SuperAdmin, Admin, Manager, User)
 const getUserProfileById = asyncHandler(async (req, res, next) => {
   const { departmentId, userId } = req.params;
-  const { currentDate = dayjs().format("YYYY-MM-DD") } = req.query;
+  const { currentDate = new Date().toISOString().split("T")[0] } = req.query;
 
   // Get user
   const user = await User.findOne({ _id: userId, department: departmentId })
@@ -411,7 +414,7 @@ const getUserProfileById = asyncHandler(async (req, res, next) => {
   }
 
   // Get date intervals
-  const dates = getDateIntervals(currentDate);
+  const dates = getDateIntervals(new Date(currentDate));
   if (!dates) return next(new CustomError("Invalid date format", 400));
 
   const {
@@ -480,6 +483,57 @@ const getUserProfileById = asyncHandler(async (req, res, next) => {
   }
 });
 
+// @desc    Get users statistics
+// @route   GET /api/users/department/:departmentId/statistics
+// @access  Private (SuperAdmin, Admin, Manager, User)
+const getUsersStatistics = asyncHandler(async (req, res, next) => {
+  const { departmentId } = req.params;
+  if (!mongoose.Types.ObjectId.isValid(departmentId)) {
+    return next(new CustomError("Invalid department ID format.", 400));
+  }
+
+  let { currentDate, page = 1, limit = 10 } = req.query;
+  page = Number(page);
+  limit = Number(limit);
+
+  if (isNaN(page) || page < 1) page = 1;
+  if (isNaN(limit) || limit < 1) limit = 10;
+  // if (limit > 100) limit = 100; // Optional: max limit
+
+  const dates = getDateIntervals(dayjs(currentDate).format("YYYY-MM-DD"));
+  if (!dates) return next(new CustomError("Invalid date format", 400));
+
+  const { last30DaysStart: startOfDay, last30DaysEnd: endOfDay } = dates;
+
+  const userPerformingActionRole = req.user.role;
+
+  try {
+    const result = await fetchUserStatistics({
+      departmentId: new mongoose.Types.ObjectId(departmentId),
+      userPerformingActionRole,
+      startDate: startOfDay,
+      endDate: endOfDay,
+      page,
+      limit,
+    });
+
+    // Map _id to id for MUI Data Grid compatibility if not already string
+    const mappedRows = result.rows.map((row) => ({
+      ...row,
+      id: row._id.toString(),
+    }));
+
+    res.status(200).json({
+      rows: mappedRows,
+      page,
+      pageSize: limit,
+      rowCount: result.rowCount || 0,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 export {
   createUser,
   getAllUsers,
@@ -487,4 +541,5 @@ export {
   updateUserById,
   deleteUserById,
   getUserProfileById,
+  getUsersStatistics,
 };
