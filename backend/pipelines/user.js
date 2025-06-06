@@ -1,3 +1,9 @@
+import mongoose from "mongoose";
+import User from "../models/UserModel.js"; // Adjust path as needed
+
+const ACTIVITY_PER_TASK_BENCHMARK = 5;
+const TOTAL_TASK_VOLUME_BENCHMARK = 20;
+
 export const getUserTaskStatisticsForChartPipeline = ({
   currentStartDate,
   currentEndDate,
@@ -245,3 +251,317 @@ export const getUserRoutineTaskStatisticsForChartPipeline = ({
     },
   ];
 };
+
+export async function fetchUserStatistics({
+  departmentId,
+  userPerformingActionRole,
+  startDate,
+  endDate,
+  page,
+  limit,
+}) {
+  const skip = (page - 1) * limit;
+
+  const aggregationPipeline = [
+    // 1. Initial Match for Users
+    {
+      $match: {
+        department: departmentId,
+        isActive: true,
+      },
+    },
+    // 2. Lookups (Assigned, Project, Routine Tasks, Activities, Department)
+    {
+      $lookup: {
+        from: "tasks",
+        let: { userId: "$_id" },
+        pipeline: [
+          {
+            $match: {
+              $expr: { $in: ["$$userId", "$assignedTo"] },
+              taskType: "AssignedTask",
+              createdAt: { $gte: startDate, $lte: endDate },
+            },
+          },
+        ],
+        as: "assignedTasksData",
+      },
+    },
+    {
+      $lookup: {
+        from: "tasks",
+        let: { userId: "$_id" },
+        pipeline: [
+          {
+            $match: {
+              $expr: { $eq: ["$createdBy", "$$userId"] },
+              taskType: "ProjectTask",
+              createdAt: { $gte: startDate, $lte: endDate },
+            },
+          },
+        ],
+        as: "projectTasksData",
+      },
+    },
+    {
+      $lookup: {
+        from: "routinetasks",
+        let: { userId: "$_id" },
+        pipeline: [
+          {
+            $match: {
+              $expr: { $eq: ["$performedBy", "$$userId"] },
+              createdAt: { $gte: startDate, $lte: endDate },
+            },
+          },
+        ],
+        as: "routineTasksData",
+      },
+    },
+    {
+      $lookup: {
+        from: "taskactivities",
+        let: { userId: "$_id" },
+        pipeline: [
+          {
+            $match: {
+              $expr: { $eq: ["$performedBy", "$$userId"] },
+              createdAt: { $gte: startDate, $lte: endDate },
+            },
+          },
+        ],
+        as: "activitiesData",
+      },
+    },
+    {
+      $lookup: {
+        from: "departments",
+        localField: "department",
+        foreignField: "_id",
+        as: "departmentInfo",
+      },
+    },
+    {
+      $unwind: {
+        path: "$departmentInfo",
+        preserveNullAndEmptyArrays: true,
+      },
+    },
+    // 7. AddFields - Calculate Counts and Metrics
+    {
+      $addFields: {
+        _projectTasksToConsider: {
+          $cond: {
+            if: { $eq: [userPerformingActionRole, "User"] },
+            then: [],
+            else: "$projectTasksData",
+          },
+        },
+      },
+    },
+    {
+      $addFields: {
+        name: { $concat: ["$firstName", " ", "$lastName"] },
+        departmentName: "$departmentInfo.name",
+        assignedTaskCount: { $size: "$assignedTasksData" },
+        projectTaskCount: { $size: "$_projectTasksToConsider" },
+        routineTaskCount: { $size: "$routineTasksData" },
+        activityCount: { $size: "$activitiesData" },
+        _allRelevantTasksForStatusPriority: {
+          $concatArrays: ["$assignedTasksData", "$_projectTasksToConsider"],
+        },
+      },
+    },
+    {
+      $addFields: {
+        completedTaskCount: {
+          $size: {
+            $filter: {
+              input: "$_allRelevantTasksForStatusPriority",
+              as: "task",
+              cond: { $eq: ["$$task.status", "Completed"] },
+            },
+          },
+        },
+        pendingTaskCount: {
+          $size: {
+            $filter: {
+              input: "$_allRelevantTasksForStatusPriority",
+              as: "task",
+              cond: { $eq: ["$$task.status", "Pending"] },
+            },
+          },
+        },
+        highPriorityCount: {
+          $size: {
+            $filter: {
+              input: "$_allRelevantTasksForStatusPriority",
+              as: "task",
+              cond: { $eq: ["$$task.priority", "High"] },
+            },
+          },
+        },
+        mediumPriorityCount: {
+          $size: {
+            $filter: {
+              input: "$_allRelevantTasksForStatusPriority",
+              as: "task",
+              cond: { $eq: ["$$task.priority", "Medium"] },
+            },
+          },
+        },
+        lowPriorityCount: {
+          $size: {
+            $filter: {
+              input: "$_allRelevantTasksForStatusPriority",
+              as: "task",
+              cond: { $eq: ["$$task.priority", "Low"] },
+            },
+          },
+        },
+      },
+    },
+    {
+      $addFields: {
+        totalTaskCount: {
+          $add: [
+            "$assignedTaskCount",
+            "$projectTaskCount",
+            "$routineTaskCount",
+          ],
+        },
+      },
+    },
+
+    // ---- RATING CALCULATION STAGES ----
+    {
+      $addFields: {
+        _nonRoutineTaskCountForRating: {
+          $add: ["$assignedTaskCount", "$projectTaskCount"],
+        },
+      },
+    },
+    {
+      $addFields: {
+        _completionScore: {
+          // Score 0-1
+          $cond: {
+            if: { $gt: ["$_nonRoutineTaskCountForRating", 0] },
+            then: {
+              $divide: [
+                "$completedTaskCount",
+                "$_nonRoutineTaskCountForRating",
+              ],
+            },
+            else: 0,
+          },
+        },
+        _expectedMaxActivityForRating: {
+          $multiply: [
+            "$_nonRoutineTaskCountForRating",
+            ACTIVITY_PER_TASK_BENCHMARK,
+          ],
+        },
+      },
+    },
+    {
+      $addFields: {
+        _activityScoreNormalized: {
+          // Score 0-1
+          $cond: {
+            if: { $gt: ["$_expectedMaxActivityForRating", 0] },
+            then: {
+              $min: [
+                1,
+                {
+                  $divide: ["$activityCount", "$_expectedMaxActivityForRating"],
+                },
+              ],
+            },
+            else: 0, // No non-routine tasks to log activity against, or no activity
+          },
+        },
+        _volumeScoreNormalized: {
+          // Score 0-1
+          $cond: {
+            // Avoid division by zero if benchmark is 0, though it's a const > 0 here
+            if: { $gt: [TOTAL_TASK_VOLUME_BENCHMARK, 0] },
+            then: {
+              $min: [
+                1,
+                { $divide: ["$totalTaskCount", TOTAL_TASK_VOLUME_BENCHMARK] },
+              ],
+            },
+            else: 0,
+          },
+        },
+      },
+    },
+    {
+      $addFields: {
+        _rawRating: {
+          // Weighted score 0-1
+          $add: [
+            { $multiply: ["$_completionScore", 0.5] }, // 50% weight
+            { $multiply: ["$_activityScoreNormalized", 0.3] }, // 30% weight
+            { $multiply: ["$_volumeScoreNormalized", 0.2] }, // 20% weight
+          ],
+        },
+      },
+    },
+    {
+      $addFields: {
+        rating: {
+          // Final rating 1-5, rounded to 1 decimal
+          $round: [{ $add: [1, { $multiply: ["$_rawRating", 4] }] }, 1],
+        },
+      },
+    },
+    // ---- END OF RATING CALCULATION ----
+
+    // Project final fields
+    {
+      $project: {
+        _id: 1,
+        // fullName: "$name",
+        name: 1,
+        email: 1,
+        userRole: "$role",
+        departmentName: 1,
+        assignedTaskCount: 1,
+        projectTaskCount: 1,
+        routineTaskCount: 1,
+        totalTaskCount: 1,
+        activityCount: 1,
+        completedTaskCount: 1,
+        pendingTaskCount: 1,
+        highPriorityCount: 1,
+        mediumPriorityCount: 1,
+        lowPriorityCount: 1,
+        rating: 1, // Include the new rating
+        // Temporary fields for rating calculation are implicitly excluded
+      },
+    },
+    // 8. Sort Results (can sort by rating now if desired)
+    {
+      $sort: { rating: -1, totalTaskCount: -1, name: 1 },
+    },
+    // 9. Pagination using $facet
+    {
+      $facet: {
+        paginatedResults: [{ $skip: skip }, { $limit: limit }],
+        totalCount: [{ $count: "count" }],
+      },
+    },
+    // 10. Transform Facet Result
+    {
+      $project: {
+        rows: "$paginatedResults",
+        rowCount: { $ifNull: [{ $arrayElemAt: ["$totalCount.count", 0] }, 0] },
+      },
+    },
+  ];
+
+  const results = await User.aggregate(aggregationPipeline).exec();
+  return results[0] || { rows: [], rowCount: 0 };
+}

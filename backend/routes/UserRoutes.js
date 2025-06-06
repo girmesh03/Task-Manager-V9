@@ -7,6 +7,7 @@ import {
   updateUserById,
   deleteUserById,
   getUserProfileById,
+  getUsersStatistics,
 } from "../controllers/UserController.js";
 
 import {
@@ -66,6 +67,14 @@ router.get(
   authorizeRoles("SuperAdmin", "Admin", "Manager", "User"),
   verifyDepartmentAccess,
   getUserProfileById
+);
+
+// Get users statistics
+router.get(
+  "/department/:departmentId/statistics",
+  authorizeRoles("SuperAdmin", "Admin", "Manager", "User"),
+  verifyDepartmentAccess,
+  getUsersStatistics
 );
 
 export default router;
