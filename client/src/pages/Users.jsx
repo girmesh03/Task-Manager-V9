@@ -1,3 +1,4 @@
+import { useCallback, useMemo, useState } from "react";
 import { Navigate } from "react-router";
 
 import Container from "@mui/material/Container";
@@ -6,47 +7,65 @@ import Grid from "@mui/material/Grid2";
 
 import { useSelector } from "react-redux";
 import { selectSelectedDepartmentId } from "../redux/features/authSlice";
-import { useGetUsersQuery } from "../redux/features/userApiSlice";
+import { useGetUsersStatQuery } from "../redux/features/userApiSlice";
+import { selectFilters } from "../redux/features/filtersSlice";
 
 import MuiDataGrid from "../components/MuiDataGrid";
-import {
-  LoadingFallback,
-  LoadingBackdrop,
-} from "../components/LoadingFallback";
-
-import { UserColumns } from "../utils/columns";
+import { LoadingFallback } from "../components/LoadingFallback";
+import { UserColumns } from "../utils/userColumns";
 
 const Users = () => {
   const departmentId = useSelector(selectSelectedDepartmentId);
+  const filters = useSelector(selectFilters);
+  const { selectedDate } = filters;
+
+  const [paginationModel, setPaginationModel] = useState({
+    page: 0, // MUI DataGrid is 0-indexed for page
+    pageSize: 10,
+  });
 
   const {
-    data = {},
+    data: usersStatData,
     isError,
     error,
     isLoading,
     isFetching,
     // isSuccess,
-  } = useGetUsersQuery({
+  } = useGetUsersStatQuery({
     departmentId,
-    role: "User",
-    page: 1,
-    limit: 10,
+    page: paginationModel.page + 1, // API might be 1-indexed for page
+    limit: paginationModel.pageSize,
+    currentDate: selectedDate,
   });
 
-  const { users = [] } = data || {};
+  const handlePaginationModelChange = useCallback((newModel) => {
+    setPaginationModel(newModel);
+  }, []);
 
-  if (isLoading) return <LoadingFallback />;
-  if (isFetching) return <LoadingBackdrop open={isFetching} />;
+  // Memoize rows and rowCount to prevent unnecessary re-renders of DataGrid
+  const rows = useMemo(() => usersStatData?.rows || [], [usersStatData?.rows]);
+  const rowCount = useMemo(
+    () => usersStatData?.rowCount || 0,
+    [usersStatData?.rowCount]
+  );
+
   if (isError) return <Navigate to="/error" state={{ error }} replace />;
 
   return (
-    <Container maxWidth="lg" sx={{ px: { xs: 0.5, sm: 2 } }}>
-      <Typography component="h2" variant="h6" sx={{ my: 2 }}>
+    <Container maxWidth="lg" sx={{ px: { xs: 0.5, sm: 2 }, my: 2 }}>
+      <Typography component="h4" variant="h6">
         Users
       </Typography>
       <Grid container spacing={2} columns={12}>
         <Grid size={{ xs: 12 }}>
-          <MuiDataGrid rows={users} columns={UserColumns} />
+          <MuiDataGrid
+            rows={rows}
+            columns={UserColumns} // Make sure UserColumns is defined
+            loading={isLoading || isFetching}
+            rowCount={rowCount}
+            paginationModel={paginationModel}
+            onPaginationModelChange={handlePaginationModelChange}
+          />
         </Grid>
       </Grid>
     </Container>

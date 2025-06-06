@@ -41,7 +41,7 @@ const RoutineTasks = () => {
       departmentId,
       page: state.page,
       limit: 10,
-    },
+    }
     // { refetchOnMountOrArgChange: true }
   );
 
