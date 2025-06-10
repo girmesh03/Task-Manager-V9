@@ -37,6 +37,7 @@ const TaskDetails = lazy(() => import("./pages/TaskDetails"));
 const RoutineTaskDetails = lazy(() => import("./pages/RoutineTaskDetails"));
 const Users = lazy(() => import("./pages/Users"));
 const UserProfile = lazy(() => import("./pages/UserProfile"));
+const UserAccount = lazy(() => import("./pages/UserAccount"));
 const AdminPanel = lazy(() => import("./pages/AdminPanel"));
 const Reports = lazy(() => import("./pages/Reports"));
 const ErrorPage = lazy(() => import("./pages/ErrorPage"));
@@ -73,6 +74,7 @@ const router = createBrowserRouter([
               },
               { path: "users", Component: Users },
               { path: "users/:userId/profile", Component: UserProfile },
+              { path: "users/:userId/account", Component: UserAccount },
               { path: "admin-panel", Component: AdminPanel },
               { path: "reports", Component: Reports },
             ],
