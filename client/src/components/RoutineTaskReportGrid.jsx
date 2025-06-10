@@ -10,7 +10,8 @@ import { useGetRoutineTaskReportsQuery } from "../redux/features/reportApiSlice"
 import { selectFilters } from "../redux/features/filtersSlice";
 
 import MuiDataGrid from "./MuiDataGrid";
-import { RoutineColumns } from "../utils/reportColumns";
+import CustomDataGridToolbar from "./CustomDataGridToolbar";
+import { RoutineTaskColumns } from "../utils/reportColumns";
 
 const RoutineTaskReportGrid = ({ departmentId }) => {
   const filters = useSelector(selectFilters);
@@ -19,6 +20,11 @@ const RoutineTaskReportGrid = ({ departmentId }) => {
   const [paginationModel, setPaginationModel] = useState({
     page: 0, // MUI DataGrid is 0-indexed for page
     pageSize: 10,
+  });
+
+  const [selectionModel, setSelectionModel] = useState({
+    type: "include",
+    ids: [],
   });
 
   const {
@@ -41,6 +47,10 @@ const RoutineTaskReportGrid = ({ departmentId }) => {
     setPaginationModel(newModel);
   }, []);
 
+  const handleRowSelectionModelChange = useCallback((newSelectionModel) => {
+    setSelectionModel(newSelectionModel);
+  }, []);
+
   // Memoize rows and rowCount to prevent unnecessary re-renders of DataGrid
   const rows = useMemo(() => routineData?.rows || [], [routineData?.rows]);
   const rowCount = useMemo(
@@ -56,11 +66,25 @@ const RoutineTaskReportGrid = ({ departmentId }) => {
         <Grid size={{ xs: 12 }}>
           <MuiDataGrid
             rows={rows}
-            columns={RoutineColumns}
+            columns={RoutineTaskColumns}
             loading={isLoading || isFetching}
             rowCount={rowCount}
             paginationModel={paginationModel}
             onPaginationModelChange={handlePaginationModelChange}
+            selectionModel={selectionModel}
+            onRowSelectionModelChange={handleRowSelectionModelChange}
+            onUpdate={() => {}}
+            onDelete={() => {}}
+            slug="routine task"
+            components={{ toolbar: CustomDataGridToolbar }}
+            componentsProps={{
+              toolbar: {
+                items: rows,
+                selectedItemIds: selectionModel,
+                slug: "Task",
+                onCreate: () => null,
+              },
+            }}
           />
         </Grid>
       </Grid>

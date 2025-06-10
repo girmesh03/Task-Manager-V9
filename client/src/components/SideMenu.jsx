@@ -56,7 +56,7 @@ const SideMenu = () => {
       <Stack
         direction="column"
         spacing={1}
-        sx={{ p: 1, flexGrow: 1, overflowY: "auto" }}
+        sx={{ flexGrow: 1, overflowY: "auto" }}
       >
         <DepartmentMenu />
         <Divider />

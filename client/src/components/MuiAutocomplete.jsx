@@ -1,5 +1,5 @@
 // react imports
-import React, { memo } from "react";
+import { memo } from "react";
 import { Controller } from "react-hook-form";
 import PropTypes from "prop-types";
 
@@ -8,7 +8,7 @@ import Autocomplete from "@mui/material/Autocomplete";
 import TextField from "@mui/material/TextField";
 
 const MuiAutocomplete = memo(
-  ({ name, control, rules, label, options, ...props }) => {
+  ({ name, control, rules, label, options, multiple = true, ...props }) => {
     // console.log("MuiAutocomplete");
     return (
       <Controller
@@ -17,7 +17,7 @@ const MuiAutocomplete = memo(
         rules={rules} // Pass validation rules
         render={({ field: { onChange, value }, fieldState: { error } }) => (
           <Autocomplete
-            multiple
+            multiple={multiple}
             options={options}
             size="small"
             getOptionLabel={(option) => option.firstName || ""}
@@ -31,7 +31,7 @@ const MuiAutocomplete = memo(
                 {...params}
                 label={label}
                 fullWidth
-                placeholder={params?.value ? "" : "Select users"}
+                placeholder={params?.value ? "" : `Select ${name}`}
                 size="small"
                 error={!!error}
                 helperText={error ? error.message : null}
@@ -64,6 +64,7 @@ MuiAutocomplete.propTypes = {
   rules: PropTypes.object,
   label: PropTypes.string,
   options: PropTypes.array.isRequired,
+  multiple: PropTypes.bool,
 };
 
 export default MuiAutocomplete;
