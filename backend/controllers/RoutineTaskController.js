@@ -3,6 +3,7 @@ import asyncHandler from "express-async-handler";
 import CustomError from "../errorHandler/CustomError.js";
 import RoutineTask from "../models/RoutineTaskModel.js";
 import Notification from "../models/NotificationModel.js";
+
 import { getFormattedDate } from "../utils/GetDateIntervals.js";
 
 // Helper: Create notifications for department leadership
@@ -82,7 +83,7 @@ const createRoutineTask = asyncHandler(async (req, res, next) => {
       .populate("department", "name")
       .populate(
         "performedBy",
-        "firstName lastName fullName position profilePicture"
+        "firstName lastName fullName email position role profilePicture"
       )
       .session(session);
 
@@ -120,7 +121,8 @@ const getAllRoutineTasks = asyncHandler(async (req, res, next) => {
         { path: "department", select: "name" },
         {
           path: "performedBy",
-          select: "firstName lastName fullName position profilePicture",
+          select:
+            "firstName lastName fullName email position role profilePicture",
         },
       ],
       session,
@@ -172,7 +174,7 @@ const getRoutineTaskById = asyncHandler(async (req, res, next) => {
       .populate("department", "name")
       .populate(
         "performedBy",
-        "firstName lastName fullName position profilePicture"
+        "firstName lastName fullName email position role profilePicture"
       )
       .session(session);
 
@@ -262,7 +264,7 @@ const updateRoutineTask = asyncHandler(async (req, res, next) => {
       .populate("department", "name")
       .populate(
         "performedBy",
-        "firstName lastName fullName position profilePicture"
+        "firstName lastName fullName email position role profilePicture"
       )
       .session(session);
 

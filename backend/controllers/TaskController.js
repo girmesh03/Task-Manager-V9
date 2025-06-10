@@ -8,6 +8,7 @@ import AssignedTask from "../models/AssignedTaskModel.js";
 import ProjectTask from "../models/ProjectTaskModel.js";
 import Notification from "../models/NotificationModel.js";
 import TaskActivity from "../models/TaskActivityModel.js";
+
 import { getFormattedDate } from "../utils/GetDateIntervals.js";
 
 // Authorization Helper
@@ -144,14 +145,16 @@ const createTask = asyncHandler(async (req, res, next) => {
     const populateOptions = [
       {
         path: "createdBy",
-        select: "firstName lastName fullName position profilePicture",
+        select:
+          "firstName lastName fullName email position role profilePicture",
       },
       { path: "department", select: "name" },
       {
         path: "activities",
         populate: {
           path: "performedBy",
-          select: "firstName lastName fullName position profilePicture",
+          select:
+            "firstName lastName fullName email position role profilePicture",
         },
       },
     ];
@@ -159,7 +162,8 @@ const createTask = asyncHandler(async (req, res, next) => {
     if (taskType === "AssignedTask") {
       populateOptions.push({
         path: "assignedTo",
-        select: "firstName lastName fullName position profilePicture",
+        select:
+          "firstName lastName fullName email position role profilePicture",
       });
     }
 
@@ -236,12 +240,14 @@ const getAllTasks = asyncHandler(async (req, res, next) => {
       populate: [
         {
           path: "createdBy",
-          select: "firstName lastName fullName position profilePicture",
+          select:
+            "firstName lastName fullName email position role profilePicture",
           options: { session },
         },
         {
           path: "assignedTo",
-          select: "firstName lastName fullName position profilePicture",
+          select:
+            "firstName lastName fullName email position role profilePicture",
           options: { session },
         },
         {
@@ -257,7 +263,8 @@ const getAllTasks = asyncHandler(async (req, res, next) => {
             // limit: 1,
             populate: {
               path: "performedBy",
-              select: "firstName lastName fullName position profilePicture",
+              select:
+                "firstName lastName fullName email position role profilePicture",
             },
           },
         },
@@ -345,12 +352,14 @@ const getTaskById = asyncHandler(async (req, res, next) => {
       .populate([
         {
           path: "createdBy",
-          select: "firstName lastName fullName position profilePicture",
+          select:
+            "firstName lastName fullName email position role profilePicture",
           options: { session },
         },
         {
           path: "assignedTo",
-          select: "firstName lastName fullName position profilePicture",
+          select:
+            "firstName lastName fullName email position role profilePicture",
           options: { session },
         },
         {
@@ -365,7 +374,8 @@ const getTaskById = asyncHandler(async (req, res, next) => {
             // sort: { createdAt: -1 },
             populate: {
               path: "performedBy",
-              select: "firstName lastName fullName position profilePicture",
+              select:
+                "firstName lastName fullName email position role profilePicture",
               options: { session },
             },
           },
@@ -655,11 +665,13 @@ const updateTaskById = asyncHandler(async (req, res, next) => {
       .populate([
         {
           path: "createdBy",
-          select: "firstName lastName fullName position profilePicture",
+          select:
+            "firstName lastName fullName email position role profilePicture",
         },
         {
           path: "assignedTo",
-          select: "firstName lastName fullName position profilePicture",
+          select:
+            "firstName lastName fullName email position role profilePicture",
         },
         { path: "department", select: "name" },
         {
@@ -667,7 +679,8 @@ const updateTaskById = asyncHandler(async (req, res, next) => {
           options: { sort: { createdAt: -1 } },
           populate: {
             path: "performedBy",
-            select: "firstName lastName fullName position profilePicture",
+            select:
+              "firstName lastName fullName email position role profilePicture",
           },
         },
       ])
@@ -823,7 +836,8 @@ const createTaskActivity = asyncHandler(async (req, res, next) => {
     const populatedActivity = await TaskActivity.findById(activity._id)
       .populate({
         path: "performedBy",
-        select: "firstName lastName fullName position profilePicture",
+        select:
+          "firstName lastName fullName email position role profilePicture",
       })
       .session(session);
 

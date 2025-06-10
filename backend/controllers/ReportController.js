@@ -59,14 +59,21 @@ const getTaskReport = asyncHandler(async (req, res, next) => {
 
   const populateOptions = [
     { path: "department", select: "name" }, // Used for departmental context if needed, not directly for 'location' field here
-    { path: "createdBy", select: "firstName lastName" },
-    { path: "assignedTo", select: "firstName lastName" }, // For AssignedTask
+    {
+      path: "createdBy",
+      select: "firstName lastName fullName email position role profilePicture",
+    },
+    {
+      path: "assignedTo",
+      select: "firstName lastName fullName email position role profilePicture",
+    }, // For AssignedTask
     {
       path: "activities", // Virtual populate from TaskModel
       select: "description performedBy statusChange createdAt",
       populate: {
         path: "performedBy",
-        select: "firstName lastName",
+        select:
+          "firstName lastName fullName email position role profilePicture",
       },
     },
   ];
@@ -186,7 +193,10 @@ const getRoutineTaskReport = asyncHandler(async (req, res, next) => {
 
   const populateOptions = [
     { path: "department", select: "name" }, // For location (department's name)
-    { path: "performedBy", select: "firstName lastName" },
+    {
+      path: "performedBy",
+      select: "firstName lastName fullName email position role profilePicture",
+    },
   ];
 
   const options = {
