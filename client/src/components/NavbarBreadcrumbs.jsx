@@ -29,7 +29,8 @@ const breadcrumbNameMap = {
   "/routine-tasks/:taskId/details": "Routine Task Details",
   "/users": "Users",
   "/users/:userId/profile": "User Profile",
-  // "/admin-panel": "Admin Panel",
+  "/users/:userId/account": "User Account",
+  "/admin-panel": "Admin Panel",
   "/reports": "Reports",
 };
 
@@ -86,6 +87,12 @@ const getBreadcrumbs = (pathnames) => {
           path: `${builtPath}/profile`,
         });
         i++; // Skip "update"
+      } else if (nextSegment === "account") {
+        breadcrumbs.push({
+          name: "User Account",
+          path: `${builtPath}/account`,
+        });
+        i++;
       } else if (nextSegment === "details") {
         breadcrumbs.push({
           name: "User Details",

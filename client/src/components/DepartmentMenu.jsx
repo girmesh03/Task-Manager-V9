@@ -11,8 +11,8 @@ import Toolbar from "@mui/material/Toolbar";
 import Select, { selectClasses } from "@mui/material/Select";
 import Pagination from "@mui/material/Pagination";
 import Box from "@mui/material/Box";
-import Button from "@mui/material/Button";
-import AddRoundedIcon from "@mui/icons-material/AddRounded";
+// import Button from "@mui/material/Button";
+// import AddRoundedIcon from "@mui/icons-material/AddRounded";
 import DevicesRoundedIcon from "@mui/icons-material/DevicesRounded";
 
 import { useSelector, useDispatch } from "react-redux";
@@ -22,7 +22,7 @@ import {
 } from "../redux/features/authSlice";
 import { useGetAllDepartmentsQuery } from "../redux/features/departmentApiSlice";
 
-import useAuth from "../hooks/useAuth";
+// import useAuth from "../hooks/useAuth";
 
 const Avatar = styled(MuiAvatar)(({ theme }) => ({
   width: 28,
@@ -41,7 +41,7 @@ const ITEMS_PER_PAGE = 10;
 const DROPDOWN_MAX_HEIGHT = 300;
 
 const DepartmentMenu = () => {
-  const { isAdminOrSuperAdmin } = useAuth();
+  // const { isAdminOrSuperAdmin } = useAuth();
   const selectedDepartmentId = useSelector(selectSelectedDepartmentId);
   const dispatch = useDispatch();
 
@@ -88,7 +88,7 @@ const DepartmentMenu = () => {
   if (isError) return <Navigate to="/error" state={{ error }} replace />;
 
   return (
-    <Box>
+    <Box sx={{ px: 1, pt: 1 }}>
       <Select
         labelId="department-select"
         id="company-department-select"
@@ -102,11 +102,11 @@ const DepartmentMenu = () => {
         fullWidth
         MenuProps={{
           PaperProps: {
-            style: { maxHeight: DROPDOWN_MAX_HEIGHT, overflowY: "auto" },
+            sx: { maxHeight: DROPDOWN_MAX_HEIGHT, overflowY: "auto" },
           },
         }}
         sx={{
-          mb: 1,
+          p: 0,
           [`& .${selectClasses.select}`]: {
             display: "flex",
             alignItems: "center",
@@ -135,18 +135,6 @@ const DepartmentMenu = () => {
           />
         </Box>
       </Select>
-      {isAdminOrSuperAdmin && (
-        <Button
-          variant="outlined"
-          fullWidth
-          startIcon={<AddRoundedIcon />}
-          onClick={() => {
-            // handle add department action here
-          }}
-        >
-          Add Department
-        </Button>
-      )}
     </Box>
   );
 };

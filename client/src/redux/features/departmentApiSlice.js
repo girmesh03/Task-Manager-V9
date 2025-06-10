@@ -2,73 +2,85 @@ import { apiSlice } from "./apiSlice";
 
 export const departmentApiSlice = apiSlice.injectEndpoints({
   endpoints: (builder) => ({
-    // Get All Departments (Paginated), (SuperAdmin/Admin)
     getAllDepartments: builder.query({
-      query: ({ page = 1, limit = 10 }) => ({
+      query: ({ page = 1, limit = 10 } = {}) => ({
         url: "/departments",
         params: { page, limit },
       }),
-      providesTags: ["Departments"],
+
       transformResponse: (response) => ({
         departments: response.departments,
         pagination: response.pagination,
       }),
+
+      providesTags: (result) => [
+        { type: "Departments", id: "LIST" },
+        ...(result?.departments?.map((department) => ({
+          type: "Departments",
+          id: department._id,
+        })) || []),
+      ],
     }),
 
-    // Create Department (SuperAdmin)
     createDepartment: builder.mutation({
-      query: (departmentData) => ({
+      query: ({ departmentData }) => ({
         url: "/departments",
         method: "POST",
         body: departmentData,
       }),
-      invalidatesTags: ["Departments"],
+      invalidatesTags: [{ type: "Departments", id: "LIST" }],
     }),
 
-    // Get Single Department by ID
-    getDepartmentById: builder.query({
-      query: (departmentId) => `/departments/${departmentId}`,
-      providesTags: (result, error, id) => [{ type: "Department", id }],
+    getDepartment: builder.query({
+      query: ({ departmentId }) => `/departments/${departmentId}`,
+
+      providesTags: (result, error, { departmentId }) => [
+        { type: "Departments", id: departmentId },
+      ],
+
       transformResponse: (response) => response.department,
     }),
 
-    // Update Department (SuperAdmin)
     updateDepartment: builder.mutation({
-      query: ({ departmentId, ...updateData }) => ({
+      query: ({ departmentId, updateData }) => ({
         url: `/departments/${departmentId}`,
         method: "PUT",
         body: updateData,
       }),
+
       invalidatesTags: (result, error, { departmentId }) => [
-        "Departments",
-        { type: "Department", id: departmentId },
+        { type: "Departments", id: departmentId },
+        { type: "Departments", id: "LIST" },
+        { type: "Departments", id: "MANAGERS_" + departmentId },
       ],
     }),
 
-    // Delete Department (SuperAdmin)
     deleteDepartment: builder.mutation({
-      query: (departmentId) => ({
+      query: ({ departmentId }) => ({
         url: `/departments/${departmentId}`,
         method: "DELETE",
       }),
-      invalidatesTags: ["Departments"],
+
+      invalidatesTags: (result, error, { departmentId }) => [
+        { type: "Departments", id: departmentId },
+        { type: "Departments", id: "LIST" },
+        { type: "Departments", id: "MANAGERS_" + departmentId },
+      ],
     }),
 
-    // Get Department Managers
     getDepartmentManagers: builder.query({
-      query: (departmentId) => `/departments/${departmentId}/managers`,
-      providesTags: (result, error, id) => [{ type: "DepartmentManagers", id }],
+      query: ({ departmentId }) => `/departments/${departmentId}/managers`,
+      providesTags: (result, error, { departmentId }) => [
+        { type: "Departments", id: "MANAGERS_" + departmentId },
+      ],
     }),
   }),
-  // overrideExisting: false,
 });
 
 export const {
   useGetAllDepartmentsQuery,
+  useGetDepartmentQuery,
   useCreateDepartmentMutation,
-  useLazyGetAllDepartmentsQuery,
-  useGetDepartmentByIdQuery,
-  useLazyGetDepartmentByIdQuery,
   useUpdateDepartmentMutation,
   useDeleteDepartmentMutation,
   useGetDepartmentManagersQuery,

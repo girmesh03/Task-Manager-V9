@@ -34,7 +34,8 @@ const MenuItem = styled(MuiMenuItem)({
 
 const OptionsMenu = memo(() => {
   // console.log("OptionsMenu");
-  const { currentUserId, isAdminOrSuperAdmin } = useAuth();
+  // const { currentUserId, isAdminOrSuperAdmin } = useAuth();
+  const { currentUserId } = useAuth();
   const dispatch = useDispatch();
   const navigate = useNavigate();
 
@@ -85,6 +86,7 @@ const OptionsMenu = memo(() => {
           },
           [`& .${paperClasses.root}`]: {
             padding: 0,
+            minWidth: "150px",
           },
           [`& .${dividerClasses.root}`]: {
             margin: "4px -4px",
@@ -101,11 +103,11 @@ const OptionsMenu = memo(() => {
         <Divider />
         <MenuItem
           component={Link}
-          to={"/admin-panel"}
+          to={`/users/${currentUserId}/account`}
           onClick={handleClose}
-          disabled={!isAdminOrSuperAdmin}
+          // disabled={!isAdminOrSuperAdmin}
         >
-          Admin control Panel
+          Account
         </MenuItem>
         <Divider />
 

@@ -11,8 +11,8 @@ import { useGetUsersStatQuery } from "../redux/features/userApiSlice";
 import { selectFilters } from "../redux/features/filtersSlice";
 
 import MuiDataGrid from "../components/MuiDataGrid";
-import { LoadingFallback } from "../components/LoadingFallback";
-import { UserColumns } from "../utils/userColumns";
+import CustomDataGridToolbar from "../components/CustomDataGridToolbar";
+import { LeaderboardColumns } from "../utils/userColumns";
 
 const Users = () => {
   const departmentId = useSelector(selectSelectedDepartmentId);
@@ -54,17 +54,31 @@ const Users = () => {
   return (
     <Container maxWidth="lg" sx={{ px: { xs: 0.5, sm: 2 }, my: 2 }}>
       <Typography component="h4" variant="h6">
-        Users
+        Users Leaderboard
       </Typography>
       <Grid container spacing={2} columns={12}>
         <Grid size={{ xs: 12 }}>
           <MuiDataGrid
             rows={rows}
-            columns={UserColumns} // Make sure UserColumns is defined
+            columns={LeaderboardColumns}
             loading={isLoading || isFetching}
             rowCount={rowCount}
             paginationModel={paginationModel}
             onPaginationModelChange={handlePaginationModelChange}
+            selectionModel={{ type: "include", ids: [] }}
+            onRowSelectionModelChange={() => null}
+            onUpdate={() => {}}
+            onDelete={() => {}}
+            slug="leaderboard"
+            components={{ toolbar: CustomDataGridToolbar }}
+            componentsProps={{
+              toolbar: {
+                items: rows,
+                selectedItemIds: { type: "include", ids: [] },
+                slug: "Leaderboard",
+                onCreate: () => null,
+              },
+            }}
           />
         </Grid>
       </Grid>

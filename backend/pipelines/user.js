@@ -1,9 +1,9 @@
-import mongoose from "mongoose";
-import User from "../models/UserModel.js"; // Adjust path as needed
+import User from "../models/UserModel.js";
 
 const ACTIVITY_PER_TASK_BENCHMARK = 5;
 const TOTAL_TASK_VOLUME_BENCHMARK = 20;
 
+// Pipeline for fetching user task statistics
 export const getUserTaskStatisticsForChartPipeline = ({
   currentStartDate,
   currentEndDate,
@@ -139,6 +139,7 @@ export const getUserTaskStatisticsForChartPipeline = ({
   ];
 };
 
+// Pipeline for fetching user routine task statistics
 export const getUserRoutineTaskStatisticsForChartPipeline = ({
   currentStartDate,
   currentEndDate,
@@ -252,6 +253,7 @@ export const getUserRoutineTaskStatisticsForChartPipeline = ({
   ];
 };
 
+// Pipeline for fetching user statistics
 export async function fetchUserStatistics({
   departmentId,
   userPerformingActionRole,

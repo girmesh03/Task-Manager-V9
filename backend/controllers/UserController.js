@@ -9,12 +9,16 @@ import Task from "../models/TaskModel.js";
 import RoutineTask from "../models/RoutineTaskModel.js";
 import TaskActivity from "../models/TaskActivityModel.js";
 import Notification from "../models/NotificationModel.js";
+
 import { sendVerificationEmail } from "../utils/SendEmail.js";
+
 import {
   getDateIntervals,
   getFormattedDate,
 } from "../utils/GetDateIntervals.js";
+
 import { getLeaderboardPipeline } from "../pipelines/Dashboard.js";
+
 import {
   getUserTaskStatisticsForChartPipeline,
   getUserRoutineTaskStatisticsForChartPipeline,
@@ -116,7 +120,7 @@ const createUser = asyncHandler(async (req, res, next) => {
 // @access  Private (SuperAdmin: any, Other: department)
 const getAllUsers = asyncHandler(async (req, res, next) => {
   const { departmentId } = req.params;
-  const { page = 1, limit = 10, role = "User" } = req.query;
+  const { page = 1, limit = 10, role } = req.query;
   const requester = req.user;
   const filter = { isActive: true };
 
@@ -149,7 +153,7 @@ const getAllUsers = asyncHandler(async (req, res, next) => {
       { path: "department", select: "name" },
       { path: "managedDepartment", select: "name" },
     ],
-    select: "-tokenVersion -role",
+    select: "-tokenVersion",
     sort: "-createdAt",
   };
 
@@ -196,7 +200,7 @@ const getUserById = asyncHandler(async (req, res, next) => {
           },
         },
       ])
-      .select("firstName lastName email position fullName profilePicture");
+      .select("firstName lastName fullName email position role profilePicture");
 
     if (!user) {
       throw new CustomError("User not found", 404);
@@ -408,7 +412,7 @@ const getUserProfileById = asyncHandler(async (req, res, next) => {
   // Get user
   const user = await User.findOne({ _id: userId, department: departmentId })
     .populate("department", "name")
-    .select("firstName lastName email position fullName profilePicture");
+    .select("firstName lastName fullName email position role profilePicture");
   if (!user) {
     return next(new CustomError("User not found", 404));
   }

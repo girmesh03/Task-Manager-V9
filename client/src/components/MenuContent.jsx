@@ -78,13 +78,13 @@ const MenuContent = memo(() => {
   return (
     <List dense>
       <ListSubheader>Pages</ListSubheader>
-      <Divider sx={{ mb: 1 }} />
+      {/* <Divider sx={{ mb: 1 }} /> */}
       {renderListItems(GENERAL_ROUTES)}
 
       {isPrivilegedUser && (
         <>
           <ListSubheader>Report</ListSubheader>
-          <Divider sx={{ mb: 1 }} />
+          {/* <Divider sx={{ mb: 1 }} /> */}
           {renderListItems(MANAGER_ROUTES)}
         </>
       )}
@@ -92,7 +92,7 @@ const MenuContent = memo(() => {
       {isSuperAdmin && (
         <>
           <ListSubheader>Admin</ListSubheader>
-          <Divider sx={{ mb: 1 }} />
+          {/* <Divider sx={{ mb: 1 }} /> */}
           {renderListItems(ADMIN_ROUTES)}
         </>
       )}

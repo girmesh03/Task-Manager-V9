@@ -23,6 +23,12 @@ import CategoryIcon from "@mui/icons-material/Category";
 import AssignedTasksIcon from "@mui/icons-material/AssignmentInd";
 import ProjectTasksIcon from "@mui/icons-material/AccountTree";
 
+// mui user roles icon
+import UserIcon from "@mui/icons-material/Person";
+import ManagerIcon from "@mui/icons-material/SupervisorAccount";
+import AdminIcon from "@mui/icons-material/AdminPanelSettings";
+import SuperAdminIcon from "@mui/icons-material/Security";
+
 export const drawerWidth = 240;
 
 // statusTypes
@@ -55,4 +61,12 @@ export const categoryTypes = [
 export const taskCategoryTypes = [
   { id: 1, label: "AssignedTask", icon: AssignedTasksIcon },
   { id: 2, label: "ProjectTask", icon: ProjectTasksIcon },
+];
+
+// user roles
+export const userRoleTypes = [
+  { id: 1, label: "User", icon: UserIcon },
+  { id: 2, label: "Manager", icon: ManagerIcon },
+  { id: 3, label: "Admin", icon: AdminIcon },
+  { id: 4, label: "SuperAdmin", icon: SuperAdminIcon },
 ];

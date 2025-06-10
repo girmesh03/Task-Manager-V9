@@ -2,6 +2,16 @@ import Chip from "@mui/material/Chip";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import Rating from "@mui/material/Rating";
+import Avatar from "@mui/material/Avatar";
+import Box from "@mui/material/Box";
+import Stack from "@mui/material/Stack";
+import {
+  Verified as VerifiedIcon,
+  Report as UnverifiedIcon,
+  CheckCircle as ActiveIcon,
+  Cancel as InactiveIcon,
+} from "@mui/icons-material";
+import { Divider } from "@mui/material";
 
 // Helper function to determine Chip color based on role
 const getRoleChipColor = (role) => {
@@ -19,7 +29,7 @@ const getRoleChipColor = (role) => {
   }
 };
 
-export const UserColumns = [
+export const LeaderboardColumns = [
   // {
   //   field: "id", // Corresponds to "_id" or "id" from backend
   //   headerName: "ID",
@@ -203,5 +213,157 @@ export const UserColumns = [
     maxWidth: 100,
     align: "center",
     headerAlign: "center",
+  },
+];
+
+export const UserColumns = [
+  {
+    field: "user",
+    headerName: "User",
+    flex: 2,
+    minWidth: 200,
+    renderCell: (params) => {
+      const { row } = params;
+
+      // Generate initials for fallback avatar
+      const getInitials = () => {
+        const firstInitial = row.firstName?.[0] || "";
+        const lastInitial = row.lastName?.[0] || "";
+        return `${firstInitial}${lastInitial}`.toUpperCase();
+      };
+
+      // Check if profile picture exists
+      const hasProfilePicture = row.profilePicture?.url;
+      const fullName =
+        row.fullName || `${row.firstName || ""} ${row.lastName || ""}`.trim();
+
+      return (
+        <Box
+          sx={{ display: "flex", alignItems: "center", gap: 2, width: "100%" }}
+        >
+          <Avatar
+            alt={fullName}
+            src={hasProfilePicture ? row.profilePicture.url : undefined}
+            sx={{
+              width: 30,
+              height: 30,
+              bgcolor: hasProfilePicture ? "transparent" : "primary.main",
+              fontSize: "0.8rem",
+              fontWeight: 500,
+            }}
+          >
+            {!hasProfilePicture && getInitials()}
+          </Avatar>
+
+          <Stack
+            direction="column"
+            sx={{ height: "100%", overflowX: "hidden" }}
+          >
+            <Typography
+              variant="body2"
+              // fontWeight={500}
+              noWrap
+              // sx={{ lineHeight: 1.2 }}
+            >
+              {fullName || "No name"}
+            </Typography>
+
+            {/* <Typography
+              variant="body2"
+              color="text.secondary"
+              noWrap
+              // sx={{ lineHeight: 1.2, mt: 0.5 }}
+            >
+              {row.email || "No email"}
+            </Typography> */}
+          </Stack>
+        </Box>
+      );
+    },
+  },
+  {
+    field: "position",
+    headerName: "Position",
+    flex: 1,
+    minWidth: 150,
+  },
+  {
+    field: "role",
+    headerName: "Role",
+    flex: 1,
+    minWidth: 120,
+    renderCell: (params) => (
+      <Chip
+        label={params.value || "No role"}
+        size="small"
+        color={
+          params.value === "SuperAdmin"
+            ? "primary"
+            : params.value === "Admin"
+            ? "info"
+            : params.value === "Manager"
+            ? "secondary"
+            : "default"
+        }
+      />
+    ),
+  },
+  {
+    field: "department",
+    headerName: "Department",
+    flex: 1,
+    minWidth: 100,
+    // valueGetter: (params) => console.log(params.name),
+    renderCell: (params) => (
+      <Typography
+        variant="body2"
+        sx={{
+          height: "100%",
+          display: "flex",
+          alignItems: "center",
+          overflow: "hidden",
+        }}
+      >
+        {params.row.department.name || "No department"}
+      </Typography>
+    ),
+  },
+  {
+    field: "status",
+    headerName: "Status",
+    flex: 1,
+    minWidth: 180,
+    type: "singleSelect",
+    valueOptions: ["Active", "Inactive"],
+    headerAlign: "center",
+    renderCell: (params) => {
+      const { row } = params;
+      return (
+        <Stack
+          direction="row"
+          justifyContent="space-between"
+          alignItems="center"
+          spacing={1.5}
+          sx={{ height: "100%" }}
+          divider={<Divider orientation="vertical" flexItem />}
+        >
+          <Chip
+            icon={row.isActive ? <ActiveIcon /> : <InactiveIcon />}
+            label={row.isActive ? "Active" : "Inactive"}
+            size="small"
+            color={row.isActive ? "success" : "error"}
+            variant="outlined"
+          />
+
+          <Chip
+            icon={row.isVerified ? <VerifiedIcon /> : <UnverifiedIcon />}
+            label={row.isVerified ? "Verified" : "Unverified"}
+            size="small"
+            color={row.isVerified ? "success" : "error"}
+            variant="outlined"
+          />
+        </Stack>
+      );
+    },
   },
 ];

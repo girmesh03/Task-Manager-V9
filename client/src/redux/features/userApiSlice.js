@@ -4,13 +4,12 @@ export const userApiSlice = apiSlice.injectEndpoints({
   endpoints: (builder) => ({
     getUsers: builder.query({
       query: ({ departmentId, page, limit, role }) => ({
-        url: `/users/department/${departmentId}`, // Ensure this is the correct endpoint for general user listing
+        url: `/users/department/${departmentId}`,
         params: { page, limit, role },
       }),
       transformResponse: (response) => {
-        // Assuming the backend for `/users/department/:departmentId` returns { users: [], pagination: {} }
         return {
-          users: response.data?.users || response.users || [], // Adapt based on actual response structure
+          users: response.data?.users || response.users || [],
           pagination: response.data?.pagination || response.pagination || {},
         };
       },
@@ -19,8 +18,7 @@ export const userApiSlice = apiSlice.injectEndpoints({
         ...(result?.users?.map(({ _id, id }) => ({
           type: "User",
           id: _id || id,
-        })) || []), // Individual user tags
-        { type: "User", id: "LIST" }, // General list tag
+        })) || []),
       ],
     }),
 
@@ -80,6 +78,44 @@ export const userApiSlice = apiSlice.injectEndpoints({
         { type: "UserProfile", id: userId },
       ],
     }),
+
+    createUser: builder.mutation({
+      query: ({ departmentId, userData }) => ({
+        url: `/users/department/${departmentId}`,
+        method: "POST",
+        body: userData,
+      }),
+      invalidatesTags: (result, error, { departmentId }) => [
+        "Users",
+        { type: "Users", id: `DEPARTMENT-${departmentId}` },
+      ],
+    }),
+
+    updateUser: builder.mutation({
+      query: ({ departmentId, userId, userData }) => ({
+        url: `/users/department/${departmentId}/user/${userId}`,
+        method: "PUT",
+        body: userData,
+      }),
+      invalidatesTags: (result, error, { departmentId, userId }) => [
+        { type: "User", id: userId },
+        { type: "Users", id: `DEPARTMENT-${departmentId}` },
+        { type: "UserStats", id: userId },
+        { type: "Department", id: "LIST" },
+      ],
+    }),
+
+    deleteUser: builder.mutation({
+      query: ({ departmentId, userId }) => ({
+        url: `/users/department/${departmentId}/user/${userId}`,
+        method: "DELETE",
+      }),
+      invalidatesTags: (result, error, { userId }) => [
+        { type: "User", id: userId },
+        { type: "UserStats", id: userId },
+        { type: "Department", id: "LIST" },
+      ],
+    }),
   }),
 });
 
@@ -87,4 +123,7 @@ export const {
   useGetUsersQuery,
   useGetUsersStatQuery,
   useGetUserProfileQuery,
+  useCreateUserMutation,
+  useUpdateUserMutation,
+  useDeleteUserMutation,
 } = userApiSlice;

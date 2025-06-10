@@ -1,5 +1,6 @@
 import asyncHandler from "express-async-handler";
 import jwt from "jsonwebtoken";
+import dayjs from "dayjs";
 import CustomError from "../errorHandler/CustomError.js";
 import User from "../models/UserModel.js";
 
@@ -14,7 +15,6 @@ import {
 } from "../utils/GenerateTokens.js";
 
 import { getFormattedDate } from "../utils/GetDateIntervals.js";
-import dayjs from "dayjs";
 
 // @desc Login
 // @route POST /api/auth/login
@@ -31,7 +31,7 @@ const login = asyncHandler(async (req, res, next) => {
     select: "name description managers",
     populate: {
       path: "managers",
-      select: "firstName lastName email role profilePicture",
+      select: "firstName lastName fullName email position role profilePicture",
     },
   });
 
@@ -97,7 +97,7 @@ const verifyEmail = asyncHandler(async (req, res, next) => {
     select: "name description",
     populate: {
       path: "managers",
-      select: "firstName lastName email role profilePicture",
+      select: "firstName lastName fullName email position role profilePicture",
     },
   });
 
@@ -269,7 +269,8 @@ const getMe = asyncHandler(async (req, res, next) => {
         select: "name description",
         populate: {
           path: "managers",
-          select: "firstName lastName email role profilePicture",
+          select:
+            "firstName lastName fullName email position role profilePicture",
         },
       });
 
