@@ -12,8 +12,8 @@ export const taskApiSlice = apiSlice.injectEndpoints({
         pagination: response.pagination,
       }),
       providesTags: (result, error, { departmentId }) => [
-        { type: "Tasks", id: `DEPARTMENT-${departmentId}` },
-        ...(result?.tasks?.map((task) => ({ type: "Tasks", id: task._id })) ||
+        { type: "Task", id: `DEPARTMENT-${departmentId}` },
+        ...(result?.tasks?.map((task) => ({ type: "Task", id: task._id })) ||
           []),
       ],
     }),
@@ -27,7 +27,12 @@ export const taskApiSlice = apiSlice.injectEndpoints({
         activities: response.activities,
       }),
       providesTags: (result, error, { taskId }) => [
-        { type: "Tasks", id: taskId },
+        { type: "Task", id: taskId },
+        { type: "Activity", id: `LIST-${taskId}` }, // List tag for this task's activities
+        ...(result?.activities?.map((act) => ({
+          type: "Activity",
+          id: act._id,
+        })) || []),
       ],
     }),
 
@@ -38,8 +43,9 @@ export const taskApiSlice = apiSlice.injectEndpoints({
         body: taskData,
       }),
       invalidatesTags: (result, error, { departmentId }) => [
-        { type: "Tasks", id: `DEPARTMENT-${departmentId}` },
-        "Dashboard",
+        { type: "Task", id: `DEPARTMENT-${departmentId}` },
+        { type: "Statistics", id: `DEPARTMENT-${departmentId}` },
+        // { type: "Activity", id: `LIST-${result?._id}` }, // Assuming result contains the new task ID
       ],
     }),
 
@@ -50,9 +56,10 @@ export const taskApiSlice = apiSlice.injectEndpoints({
         body: taskData,
       }),
       invalidatesTags: (result, error, { departmentId, taskId }) => [
-        { type: "Tasks", id: `DEPARTMENT-${departmentId}` },
-        { type: "Tasks", id: taskId },
-        "Dashboard",
+        { type: "Task", id: `DEPARTMENT-${departmentId}` },
+        { type: "Task", id: taskId },
+        { type: "Statistics", id: `DEPARTMENT-${departmentId}` },
+        // { type: "Activity", id: `LIST-${result?._id}` }, // Assuming result contains the new task ID
       ],
     }),
 
@@ -62,9 +69,10 @@ export const taskApiSlice = apiSlice.injectEndpoints({
         method: "DELETE",
       }),
       invalidatesTags: (result, error, { departmentId, taskId }) => [
-        { type: "Tasks", id: `DEPARTMENT-${departmentId}` },
-        { type: "Tasks", id: taskId },
-        "Dashboard",
+        { type: "Task", id: `DEPARTMENT-${departmentId}` },
+        { type: "Task", id: taskId },
+        { type: "Statistics", id: `DEPARTMENT-${departmentId}` },
+        // { type: "Activity", id: `LIST-${result?._id}` }, // Assuming result contains the new task ID
       ],
       async onQueryStarted(
         { departmentId, taskId },
@@ -93,30 +101,13 @@ export const taskApiSlice = apiSlice.injectEndpoints({
         method: "POST",
         body: activityData,
       }),
-      invalidatesTags: (result, error, { taskId }) => [
-        { type: "Tasks", id: taskId },
-        "Dashboard",
+      invalidatesTags: (result, error, { departmentId, taskId }) => [
+        { type: "Task", id: taskId },
+        { type: "Activity", id: `LIST-${taskId}` },
+        { type: "Statistics", id: `DEPARTMENT-${departmentId}` },
+        // { type: "Activity", id: `LIST-${result?._id}` }, // Assuming result contains the new task ID
       ],
-
-      async onQueryStarted(
-        { taskId, activityData },
-        { dispatch, queryFulfilled }
-      ) {
-        const patchResult = dispatch(
-          taskApiSlice.util.updateQueryData(
-            "getTaskDetails",
-            { taskId },
-            (draft) => {
-              draft.activities.push(activityData);
-            }
-          )
-        );
-        try {
-          await queryFulfilled;
-        } catch {
-          patchResult.undo();
-        }
-      },
+      // Optimistic update removed for simplicity and to rely on invalidation
     }),
 
     deleteTaskActivity: builder.mutation({
@@ -124,39 +115,25 @@ export const taskApiSlice = apiSlice.injectEndpoints({
         url: `/tasks/${taskId}/activities/${activityId}`,
         method: "DELETE",
       }),
-      invalidatesTags: (result, error, { taskId }) => [
-        { type: "Tasks", id: taskId },
-        "Dashboard",
+      invalidatesTags: (
+        result,
+        error,
+        { departmentId, taskId, activityId }
+      ) => [
+        { type: "Task", id: taskId },
+        { type: "Activity", id: `LIST-${taskId}` },
+        { type: "Activity", id: activityId },
+        { type: "Statistics", id: `DEPARTMENT-${departmentId}` },
+        // { type: "Activity", id: `LIST-${result?._id}` }, // Assuming result contains the new task ID
       ],
-      async onQueryStarted(
-        { taskId, activityId },
-        { dispatch, queryFulfilled }
-      ) {
-        const patchResult = dispatch(
-          taskApiSlice.util.updateQueryData(
-            "getTaskDetails",
-            { taskId },
-            (draft) => {
-              draft.activities = draft.activities.filter(
-                (activity) => activity._id !== activityId
-              );
-            }
-          )
-        );
-        try {
-          await queryFulfilled;
-        } catch {
-          patchResult.undo();
-        }
-      },
+      // Optimistic update removed for simplicity and to rely on invalidation
     }),
   }),
-  overrideExisting: true,
+  // overrideExisting: true,
 });
 
 export const {
   useGetTasksQuery,
-  useLazyGetTasksQuery,
   useGetTaskDetailsQuery,
   useCreateTaskMutation,
   useUpdateTaskMutation,

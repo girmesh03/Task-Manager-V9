@@ -5,6 +5,8 @@ import Department from "../models/DepartmentModel.js";
 import User from "../models/UserModel.js";
 import Notification from "../models/NotificationModel.js";
 
+import { emitToManagers, emitToUser } from "../utils/SocketEmitter.js";
+
 // @desc    Create Department
 // @route   POST /api/departments
 // @access  Private (SuperAdmin)
@@ -85,8 +87,14 @@ const createDepartment = asyncHandler(async (req, res, next) => {
           );
         })
       );
+
+      emitToUser(user._id, "role-update", {
+        message: `You've been made manager of ${createdDepartment.name}`,
+        departmentId: createdDepartment._id,
+      });
     }
 
+    // Commit transaction
     await session.commitTransaction();
     session.endSession();
 
@@ -376,6 +384,11 @@ const updateDepartmentById = asyncHandler(async (req, res, next) => {
         ],
         { session }
       );
+
+      emitToUser(user._id, "role-update", {
+        message: `You were added as manager to ${name || existingDept.name}`,
+        departmentId,
+      });
     }
 
     // 6. Handle removed managers
@@ -407,6 +420,11 @@ const updateDepartmentById = asyncHandler(async (req, res, next) => {
           ],
           { session }
         );
+
+        emitToUser(user._id, "role-update", {
+          message: `You were removed as manager from ${existingDept.name}`,
+          departmentId,
+        });
       }
     }
 
@@ -474,6 +492,12 @@ const deleteDepartmentById = asyncHandler(async (req, res, next) => {
           403
         );
       }
+
+      // const notificationMessage = `Department ${department.name} was deleted`;
+      // await emitToManagers(department._id, "department-deleted", {
+      //   message: notificationMessage,
+      //   departmentId,
+      // });
 
       // 5. Initiate deletion (triggers middleware with session)
       await department.deleteOne({ session });

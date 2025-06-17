@@ -7,16 +7,14 @@ export const departmentApiSlice = apiSlice.injectEndpoints({
         url: "/departments",
         params: { page, limit },
       }),
-
       transformResponse: (response) => ({
         departments: response.departments,
         pagination: response.pagination,
       }),
-
       providesTags: (result) => [
-        { type: "Departments", id: "LIST" },
+        { type: "Department", id: "LIST" },
         ...(result?.departments?.map((department) => ({
-          type: "Departments",
+          type: "Department",
           id: department._id,
         })) || []),
       ],
@@ -28,16 +26,14 @@ export const departmentApiSlice = apiSlice.injectEndpoints({
         method: "POST",
         body: departmentData,
       }),
-      invalidatesTags: [{ type: "Departments", id: "LIST" }],
+      invalidatesTags: [{ type: "Department", id: "LIST" }],
     }),
 
     getDepartment: builder.query({
       query: ({ departmentId }) => `/departments/${departmentId}`,
-
       providesTags: (result, error, { departmentId }) => [
-        { type: "Departments", id: departmentId },
+        { type: "Department", id: departmentId },
       ],
-
       transformResponse: (response) => response.department,
     }),
 
@@ -47,11 +43,10 @@ export const departmentApiSlice = apiSlice.injectEndpoints({
         method: "PUT",
         body: updateData,
       }),
-
       invalidatesTags: (result, error, { departmentId }) => [
-        { type: "Departments", id: departmentId },
-        { type: "Departments", id: "LIST" },
-        { type: "Departments", id: "MANAGERS_" + departmentId },
+        { type: "Department", id: departmentId },
+        { type: "Department", id: "LIST" },
+        { type: "Department", id: "MANAGERS_" + departmentId },
       ],
     }),
 
@@ -60,18 +55,17 @@ export const departmentApiSlice = apiSlice.injectEndpoints({
         url: `/departments/${departmentId}`,
         method: "DELETE",
       }),
-
       invalidatesTags: (result, error, { departmentId }) => [
-        { type: "Departments", id: departmentId },
-        { type: "Departments", id: "LIST" },
-        { type: "Departments", id: "MANAGERS_" + departmentId },
+        { type: "Department", id: departmentId },
+        { type: "Department", id: "LIST" },
+        { type: "Department", id: "MANAGERS_" + departmentId },
       ],
     }),
 
     getDepartmentManagers: builder.query({
       query: ({ departmentId }) => `/departments/${departmentId}/managers`,
       providesTags: (result, error, { departmentId }) => [
-        { type: "Departments", id: "MANAGERS_" + departmentId },
+        { type: "Department", id: "MANAGERS_" + departmentId },
       ],
     }),
   }),

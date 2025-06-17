@@ -1,4 +1,4 @@
-import { apiSlice } from "./apiSlice"; // Assuming apiSlice.js is in the same directory or adjust path
+import { apiSlice } from "./apiSlice";
 
 export const userApiSlice = apiSlice.injectEndpoints({
   endpoints: (builder) => ({
@@ -14,55 +14,31 @@ export const userApiSlice = apiSlice.injectEndpoints({
         };
       },
       providesTags: (result, error, { departmentId }) => [
-        { type: "Users", id: `DEPARTMENT-${departmentId}` }, // Tag for department-wide user list
-        ...(result?.users?.map(({ _id, id }) => ({
-          type: "User",
-          id: _id || id,
-        })) || []),
+        { type: "User", id: `DEPARTMENT-${departmentId}` },
+        ...(result?.users?.map(({ _id }) => ({ type: "User", id: _id })) || []),
       ],
     }),
 
     getUsersStat: builder.query({
       query: ({ departmentId, page, limit, currentDate }) => ({
-        url: `/users/department/${departmentId}/statistics`, // Corrected URL for the statistics endpoint
-        params: { page, limit, currentDate }, // These params are consumed by your getUsersWithStat controller
+        url: `/users/department/${departmentId}/statistics`,
+        params: { page, limit, currentDate },
       }),
       transformResponse: (response) => {
-        // The backend for /statistics returns { rows: [], page: X, pageSize: Y, rowCount: Z }
-        // We want to make this consistent for easier consumption if needed, or just pass through
         return {
           rows: response.rows || [],
           page: response.page,
           pageSize: response.pageSize,
           rowCount: response.rowCount,
-          // You could also structure it as:
-          // data: response.rows || [],
-          // meta: {
-          //   currentPage: response.page,
-          //   itemsPerPage: response.pageSize,
-          //   totalItems: response.rowCount,
-          //   // totalPages: Math.ceil(response.rowCount / response.pageSize) // if needed
-          // }
         };
       },
-      providesTags: (result, error, { departmentId, currentDate }) => {
-        const tags = [
-          {
-            type: "UserStats",
-            id: `DEPARTMENT-${departmentId}-${currentDate || "allTime"}`,
-          },
-        ];
-        if (result && result.rows) {
-          result.rows.forEach((userStat) => {
-            // userStat.id should be the user's actual ID string
-            tags.push({ type: "UserStats", id: userStat.id });
-            tags.push({ type: "User", id: userStat.id }); // Also tag the underlying User
-          });
-        }
-        tags.push({ type: "UserStats", id: "LIST" });
-        return tags;
-      },
-      // keepUnusedDataFor: 5, // Optional: time in seconds to keep data in cache after unsubscription
+      providesTags: (result, error, { departmentId }) => [
+        { type: "UserStat", id: `DEPARTMENT-${departmentId}` },
+        ...(result?.rows?.map((stat) => ({
+          type: "UserStat",
+          id: stat?.id || stat?._id,
+        })) || []),
+      ],
     }),
 
     getUserProfile: builder.query({
@@ -70,12 +46,10 @@ export const userApiSlice = apiSlice.injectEndpoints({
         url: `/users/department/${departmentId}/user/${userId}/profile`,
         params: { currentDate },
       }),
-      // Assuming the profile endpoint returns the user object directly or nested under a 'data' or 'user' key
       transformResponse: (response) =>
         response.data || response.user || response,
       providesTags: (result, error, { userId }) => [
-        { type: "User", id: userId }, // Specific user profile
-        { type: "UserProfile", id: userId },
+        { type: "User", id: userId },
       ],
     }),
 
@@ -86,8 +60,7 @@ export const userApiSlice = apiSlice.injectEndpoints({
         body: userData,
       }),
       invalidatesTags: (result, error, { departmentId }) => [
-        "Users",
-        { type: "Users", id: `DEPARTMENT-${departmentId}` },
+        { type: "User", id: `DEPARTMENT-${departmentId}` },
       ],
     }),
 
@@ -99,8 +72,8 @@ export const userApiSlice = apiSlice.injectEndpoints({
       }),
       invalidatesTags: (result, error, { departmentId, userId }) => [
         { type: "User", id: userId },
-        { type: "Users", id: `DEPARTMENT-${departmentId}` },
-        { type: "UserStats", id: userId },
+        { type: "User", id: `DEPARTMENT-${departmentId}` },
+        { type: "UserStat", id: userId },
         { type: "Department", id: "LIST" },
       ],
     }),
@@ -110,10 +83,61 @@ export const userApiSlice = apiSlice.injectEndpoints({
         url: `/users/department/${departmentId}/user/${userId}`,
         method: "DELETE",
       }),
+      invalidatesTags: (result, error, { departmentId, userId }) => [
+        { type: "User", id: userId },
+        { type: "User", id: `DEPARTMENT-${departmentId}` },
+        { type: "UserStat", id: userId },
+        { type: "Department", id: "LIST" },
+      ],
+    }),
+
+    // user account management
+    updateMyDetails: builder.mutation({
+      query: ({ userId, userData }) => ({
+        url: `/users/${userId}/details`,
+        method: "PUT",
+        body: userData,
+      }),
       invalidatesTags: (result, error, { userId }) => [
         { type: "User", id: userId },
-        { type: "UserStats", id: userId },
-        { type: "Department", id: "LIST" },
+      ],
+    }),
+
+    changeMyPassword: builder.mutation({
+      query: ({ userId, passwordData }) => ({
+        url: `/users/${userId}/password`,
+        method: "PUT",
+        body: passwordData,
+      }),
+    }),
+
+    updateMyProfilePicture: builder.mutation({
+      query: ({ userId, pictureData }) => ({
+        url: `/users/${userId}/profile-picture`,
+        method: "PUT",
+        body: pictureData,
+      }),
+      invalidatesTags: (result, error, { userId }) => [
+        { type: "User", id: userId },
+      ],
+    }),
+
+    initiateEmailChange: builder.mutation({
+      query: ({ userId, emailData }) => ({
+        url: `/users/${userId}/initiate-email-change`,
+        method: "POST",
+        body: emailData,
+      }),
+    }),
+
+    verifyEmailChange: builder.mutation({
+      query: ({ userId, tokenData }) => ({
+        url: `/users/${userId}/verify-email-change`,
+        method: "POST",
+        body: tokenData,
+      }),
+      invalidatesTags: (result, error, { userId }) => [
+        { type: "User", id: userId },
       ],
     }),
   }),
@@ -126,4 +150,11 @@ export const {
   useCreateUserMutation,
   useUpdateUserMutation,
   useDeleteUserMutation,
+
+  // user account management
+  useUpdateMyDetailsMutation,
+  useChangeMyPasswordMutation,
+  useUpdateMyProfilePictureMutation,
+  useInitiateEmailChangeMutation,
+  useVerifyEmailChangeMutation,
 } = userApiSlice;

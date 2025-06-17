@@ -9,7 +9,7 @@ import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import DashboardRoundedIcon from "@mui/icons-material/DashboardRounded";
 
-const CustomLogo = memo(({ route }) => {
+const CustomLogo = memo(({ route, sx = {} }) => {
   // console.log("CustomLogo");
   const navigate = useNavigate();
 
@@ -42,7 +42,11 @@ const CustomLogo = memo(({ route }) => {
       >
         <DashboardRoundedIcon color="inherit" sx={{ fontSize: "1rem" }} />
       </Box>
-      <Typography variant="h4" component="h1" sx={{ color: "text.primary" }}>
+      <Typography
+        variant="h4"
+        component="h1"
+        sx={{ color: "text.primary", ...sx }}
+      >
         Taskmanager
       </Typography>
     </Stack>
@@ -51,6 +55,7 @@ const CustomLogo = memo(({ route }) => {
 
 CustomLogo.propTypes = {
   route: PropTypes.string.isRequired,
+  sx: PropTypes.object,
 };
 
 export default CustomLogo;

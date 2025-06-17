@@ -26,9 +26,12 @@ import {
 } from "../components/LoadingFallback";
 
 import { statusTypes, taskCategoryTypes } from "../utils/constants";
+import { selectFilters } from "../redux/features/filtersSlice";
 
 const Tasks = () => {
   const departmentId = useSelector(selectSelectedDepartmentId);
+  const filters = useSelector(selectFilters);
+  const { selectedDate } = filters;
 
   const [state, setState] = useState({
     isDialogOpen: false,
@@ -66,8 +69,9 @@ const Tasks = () => {
       page: state.page,
       status: state.status,
       limit: 10,
-    },
-    { refetchOnMountOrArgChange: true }
+      currentDate: selectedDate,
+    }
+    // { refetchOnMountOrArgChange: true }
   );
 
   const { tasks = [], pagination: { totalPages = 1 } = {} } = data;

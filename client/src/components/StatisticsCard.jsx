@@ -104,13 +104,13 @@ const StatisticsCard = ({
           }}
           sx={{
             [`& .${areaElementClasses.root}`]: {
-              fill: `url(#area-gradient-${current30DaysCount})`,
+              fill: `url(#area-gradient-${previous30DaysCount})`,
             },
           }}
         >
           <AreaGradient
             color={chartColor}
-            id={`area-gradient-${current30DaysCount}`}
+            id={`area-gradient-${previous30DaysCount}`}
           />
         </SparkLineChart>
       </Stack>

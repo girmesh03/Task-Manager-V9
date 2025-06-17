@@ -3,10 +3,75 @@ import asyncHandler from "express-async-handler";
 import CustomError from "../errorHandler/CustomError.js";
 import RoutineTask from "../models/RoutineTaskModel.js";
 import Notification from "../models/NotificationModel.js";
+import User from "../models/UserModel.js";
 
 import { getFormattedDate } from "../utils/GetDateIntervals.js";
+import { emitToManagers } from "../utils/SocketEmitter.js";
 
-// Helper: Create notifications for department leadership
+// notifyDepartmentLeadership function
+// const notifyDepartmentLeadership = async (
+//   departmentId,
+//   excludedUserId,
+//   message,
+//   taskId,
+//   session
+// ) => {
+//   const managers = await User.find({
+//     department: departmentId,
+//     role: { $in: ["Manager", "Admin", "SuperAdmin"] },
+//     _id: { $ne: excludedUserId },
+//   });
+
+//   const notification = {
+//     type: "SystemAlert",
+//     message,
+//     linkedDocument: taskId,
+//     linkedDocumentType: "RoutineTask",
+//     department: departmentId,
+//   };
+
+//   managers.forEach(async (user) => {
+//     const userNotification = { ...notification, user: user._id };
+//     await Notification.create(userNotification, { session });
+//     emitToUser(user._id, "new-notification", userNotification);
+//   });
+// };
+
+// notifyDepartmentLeadership function
+// const notifyDepartmentLeadership = async (
+//   departmentId,
+//   excludedUserId,
+//   message,
+//   taskId,
+//   session
+// ) => {
+//   const leaders = await User.find({
+//     department: departmentId,
+//     role: { $in: ["Manager", "Admin", "SuperAdmin"] },
+//     _id: { $ne: excludedUserId },
+//   }).session(session);
+
+//   if (leaders.length === 0) return;
+
+//   const notifications = leaders.map((leader) => {
+//     const notif = {
+//       user: leader._id,
+//       type: "SystemAlert",
+//       message,
+//       linkedDocument: taskId,
+//       linkedDocumentType: "RoutineTask",
+//       department: departmentId,
+//     };
+
+//     // Real-time emit
+//     emitToUser(leader._id, "routine-update", notif);
+//     return notif;
+//   });
+
+//   await Notification.insertMany(notifications, { session });
+// };
+
+// notifyDepartmentLeadership function
 const notifyDepartmentLeadership = async (
   departmentId,
   excludedUserId,
@@ -14,14 +79,11 @@ const notifyDepartmentLeadership = async (
   taskId,
   session
 ) => {
-  const leaders = await mongoose
-    .model("User")
-    .find({
-      department: departmentId,
-      role: { $in: ["Manager", "Admin", "SuperAdmin"] },
-      _id: { $ne: excludedUserId },
-    })
-    .session(session);
+  const leaders = await User.find({
+    department: departmentId,
+    role: { $in: ["Manager", "Admin", "SuperAdmin"] },
+    _id: { $ne: excludedUserId },
+  }).session(session);
 
   if (leaders.length === 0) return;
 
@@ -34,7 +96,15 @@ const notifyDepartmentLeadership = async (
     department: departmentId,
   }));
 
+  // Save to database and emit real-time notifications
   await Notification.insertMany(notifications, { session });
+
+  // Emit to all managers using optimized utility
+  await emitToManagers(departmentId, "routine-update", {
+    message,
+    taskId,
+    departmentId,
+  });
 };
 
 // @desc    Create Routine Task
@@ -71,6 +141,14 @@ const createRoutineTask = asyncHandler(async (req, res, next) => {
     await routineTask.save({ session });
 
     // Notify leadership
+    // await notifyDepartmentLeadership(
+    //   departmentId,
+    //   userId,
+    //   `New routine task logged: ${taskDate}`,
+    //   routineTask._id,
+    //   session
+    // );
+
     await notifyDepartmentLeadership(
       departmentId,
       userId,
@@ -252,6 +330,14 @@ const updateRoutineTask = asyncHandler(async (req, res, next) => {
     await task.save({ session });
 
     // Notify leadership
+    // await notifyDepartmentLeadership(
+    //   task.department,
+    //   userId,
+    //   `Routine task updated: ${getFormattedDate(task.date, 0)}`,
+    //   task._id,
+    //   session
+    // );
+
     await notifyDepartmentLeadership(
       task.department,
       userId,

@@ -6,7 +6,9 @@ import Task from "./TaskModel.js";
 import RoutineTask from "./RoutineTaskModel.js";
 import User from "./UserModel.js";
 import CustomError from "../errorHandler/CustomError.js";
+
 import { getFormattedDate } from "../utils/GetDateIntervals.js";
+import { deleteFromCloudinary } from "../utils/cloudinaryHelper.js";
 
 const departmentSchema = new mongoose.Schema(
   {
@@ -105,6 +107,37 @@ departmentSchema.pre(
   }
 );
 
+// departmentSchema.pre(
+//   "deleteOne",
+//   { document: true, query: false },
+//   async function (next) {
+//     const session = this.$session();
+//     const departmentId = this._id;
+
+//     try {
+//       // Delete all department-related data
+//       await Promise.all([
+//         Notification.deleteMany({ department: departmentId }).session(session),
+//         TaskActivity.deleteMany({ department: departmentId }).session(session),
+//         Task.deleteMany({ department: departmentId }).session(session),
+//         RoutineTask.deleteMany({ department: departmentId }).session(session),
+//         User.deleteMany({ department: departmentId }).session(session),
+//       ]);
+
+//       // Delete notifications referencing department-linked documents
+//       await Notification.deleteMany({
+//         "linkedDocument.department": departmentId,
+//       }).session(session);
+
+//       next();
+//     } catch (err) {
+//       next(err);
+//     }
+//   }
+// );
+
+// ===================== Static Methods =====================
+
 departmentSchema.pre(
   "deleteOne",
   { document: true, query: false },
@@ -113,18 +146,34 @@ departmentSchema.pre(
     const departmentId = this._id;
 
     try {
-      // Delete all department-related data
-      await Promise.all([
-        Notification.deleteMany({ department: departmentId }).session(session),
-        TaskActivity.deleteMany({ department: departmentId }).session(session),
-        Task.deleteMany({ department: departmentId }).session(session),
-        RoutineTask.deleteMany({ department: departmentId }).session(session),
-        User.deleteMany({ department: departmentId }).session(session),
-      ]);
+      // Find all related documents to trigger their individual 'deleteOne' hooks
+      const users = await User.find({ department: departmentId }).session(
+        session
+      );
+      for (const user of users) {
+        await user.deleteOne({ session });
+      }
 
-      // Delete notifications referencing department-linked documents
+      const tasks = await Task.find({ department: departmentId }).session(
+        session
+      );
+      for (const task of tasks) {
+        await task.deleteOne({ session });
+      }
+
+      const routineTasks = await RoutineTask.find({
+        department: departmentId,
+      }).session(session);
+      for (const task of routineTasks) {
+        await task.deleteOne({ session }); // Assuming RoutineTask has its own hooks
+      }
+
+      // Delete notifications (deleteMany is fine here as they don't have Cloudinary assets)
       await Notification.deleteMany({
-        "linkedDocument.department": departmentId,
+        $or: [
+          { department: departmentId },
+          { "linkedDocument.department": departmentId },
+        ],
       }).session(session);
 
       next();

@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import mongoosePaginate from "mongoose-paginate-v2";
 import { getFormattedDate } from "../utils/GetDateIntervals.js";
 
 const notificationSchema = new mongoose.Schema(
@@ -24,7 +25,7 @@ const notificationSchema = new mongoose.Schema(
         "StatusChange",
         "SystemAlert",
       ],
-      required: true,
+      required: [true, "Notification type is required"],
       index: true,
     },
     task: {
@@ -49,6 +50,11 @@ const notificationSchema = new mongoose.Schema(
       required: function () {
         return !!this.linkedDocument;
       },
+    },
+    priority: {
+      type: String,
+      enum: ["Low", "Medium", "High"],
+      default: "Medium",
     },
     isRead: {
       type: Boolean,
@@ -80,8 +86,11 @@ const notificationSchema = new mongoose.Schema(
 
 // ===================== Indexes =====================
 notificationSchema.index({ user: 1, isRead: 1 });
-notificationSchema.index({ createdAt: -1 });
+notificationSchema.index({ createdAt: 1 }, { expireAfterSeconds: 2592000 }); // 30 days
 notificationSchema.index({ linkedDocumentType: 1 });
+
+// ===================== Paginate =====================
+notificationSchema.plugin(mongoosePaginate);
 
 const Notification = mongoose.model("Notification", notificationSchema);
 

@@ -1,55 +1,48 @@
-// react
-import { useState } from "react";
-import { Link, useNavigate } from "react-router";
-import { useForm, Controller } from "react-hook-form";
+import { useState, useMemo } from "react";
+import { useNavigate, useLocation } from "react-router";
+import { useForm } from "react-hook-form";
 import { toast } from "react-toastify";
+import { useDispatch, useSelector } from "react-redux";
 
-// mui
 import Card from "@mui/material/Card";
+import CardContent from "@mui/material/CardContent";
 import Button from "@mui/material/Button";
+import Grid from "@mui/material/Grid2";
 import InputAdornment from "@mui/material/InputAdornment";
-import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import CircularProgress from "@mui/material/CircularProgress";
-import TextField from "@mui/material/TextField";
-import Grid from "@mui/material/Grid2";
-import Visibility from "@mui/icons-material/Visibility";
-import VisibilityOff from "@mui/icons-material/VisibilityOff";
-import Lock from "@mui/icons-material/Lock";
-import Email from "@mui/icons-material/Email";
+import EmailIcon from "@mui/icons-material/Email";
+import LockIcon from "@mui/icons-material/Lock";
+import VisibilityIcon from "@mui/icons-material/Visibility";
+import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
 
-// Redux
-import { useDispatch, useSelector } from "react-redux";
-import { setCredentials, selectIsLoading } from "../redux/features/authSlice";
-
-// Components
 import AuthContent from "../components/AuthContent";
+import MuiTextField from "../components/MuiTextField";
+import { setCredentials, selectIsLoading } from "../redux/features/authSlice";
 
 const Login = () => {
   const dispatch = useDispatch();
-  const isLoading = useSelector(selectIsLoading);
-
-  const [showPassword, setShowPassword] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
+  const fromPath = location.state?.from?.pathname || "/dashboard";
 
+  const isLoading = useSelector(selectIsLoading);
   const { handleSubmit, control, reset } = useForm({
-    defaultValues: {
-      email: "",
-      password: "",
-    },
+    defaultValues: useMemo(() => ({ email: "", password: "" }), []),
   });
 
-  const togglePasswordVisibility = () => setShowPassword((prev) => !prev);
+  const [showPassword, setShowPassword] = useState(false);
+  const togglePassword = () => setShowPassword((prev) => !prev);
 
   const onSubmit = async (formData) => {
     try {
       const response = await dispatch(setCredentials(formData)).unwrap();
-      // console.log("response", response);
       toast.success(response.message || "Login successful");
       reset();
-      navigate(location.state?.from?.pathname || "/dashboard");
+      navigate(fromPath, { replace: true });
     } catch (error) {
-      toast.error(error.message || "Login failed");
+      const errMsg = error?.data?.message || error?.message || "Login failed";
+      toast.error(errMsg);
     }
   };
 
@@ -60,12 +53,9 @@ const Login = () => {
       spacing={4}
       sx={{ py: 4, px: 1, maxWidth: { xs: 450, md: 900 }, m: "auto" }}
     >
-      {/* Auth Content Section */}
       <Grid size={{ xs: 12, md: 6 }} sx={{ m: "auto" }}>
         <AuthContent />
       </Grid>
-
-      {/* Login Form Section */}
       <Grid size={{ xs: 12, md: 6 }}>
         <Card
           variant="outlined"
@@ -74,160 +64,109 @@ const Login = () => {
           <Typography variant="h4" textAlign="center" gutterBottom>
             Welcome Back!
           </Typography>
-
-          <Grid
-            container
-            spacing={3}
+          <CardContent
             component="form"
             onSubmit={handleSubmit(onSubmit)}
             noValidate
             autoComplete="off"
             sx={{ mt: 4 }}
           >
-            <Grid size={12}>
-              <Typography
-                variant="caption"
-                component="label"
-                htmlFor="email"
-                sx={{ ml: 1, mb: 0.5, display: "inline-flex" }}
-              >
-                Email
-              </Typography>
-              <Controller
-                name="email"
-                control={control}
-                rules={{
-                  required: "Email is required",
-                  pattern: {
-                    value: /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i,
-                    message: "Invalid email address",
-                  },
-                }}
-                render={({ field, fieldState: { error } }) => (
-                  <TextField
-                    {...field}
-                    id="email"
-                    placeholder="your@email.com"
-                    autoComplete="email"
-                    type="text"
-                    size="small"
-                    fullWidth
-                    variant="outlined"
-                    slotProps={{
-                      input: {
-                        startAdornment: (
-                          <InputAdornment position="start">
-                            <Email color="primary" fontSize="small" />
-                          </InputAdornment>
-                        ),
-                      },
-                    }}
-                    error={!!error}
-                    helperText={error?.message}
-                  />
-                )}
-              />
-            </Grid>
-
-            <Grid size={12}>
-              <Stack
-                direction="row"
-                justifyContent="space-between"
-                sx={{ mb: 0.5 }}
-              >
-                <Typography
-                  variant="caption"
-                  component="label"
-                  htmlFor="password"
-                  sx={{ ml: 1 }}
-                >
-                  Password
-                </Typography>
-                <Typography
-                  component={Link}
-                  to="/forgot-password"
-                  variant="caption"
-                  sx={{
-                    mr: 1,
-                    textDecoration: "none",
-                    color: "inherit",
-                    "&:hover": {
-                      textDecoration: "underline",
-                      color: "primary.main",
-                    },
-                  }}
-                >
-                  Forgot password?
-                </Typography>
-              </Stack>
-
-              <Controller
-                name="password"
-                control={control}
-                rules={{
-                  required: "Password is required",
-                  minLength: {
-                    value: 5,
-                    message: "Password must be at least 5 characters",
-                  },
-                }}
-                render={({ field, fieldState: { error } }) => (
-                  <TextField
-                    {...field}
-                    id="password"
-                    placeholder="••••••"
-                    autoComplete="current-password"
-                    type={showPassword ? "text" : "password"}
-                    size="small"
-                    fullWidth
-                    variant="outlined"
-                    slotProps={{
-                      input: {
-                        startAdornment: (
-                          <InputAdornment position="start">
-                            <Lock color="primary" fontSize="small" />
-                          </InputAdornment>
-                        ),
-                        endAdornment: (
-                          <InputAdornment
-                            position="end"
-                            size="small"
-                            sx={{ cursor: "pointer" }}
-                            onClick={togglePasswordVisibility}
-                          >
-                            {showPassword ? (
-                              <VisibilityOff fontSize="small" />
-                            ) : (
-                              <Visibility fontSize="small" />
-                            )}
-                          </InputAdornment>
-                        ),
-                      },
-                    }}
-                    error={!!error}
-                    helperText={error?.message}
-                  />
-                )}
-              />
-            </Grid>
-
-            <Grid size={12} sx={{ mt: 2 }}>
-              <Button
-                type="submit"
-                fullWidth
-                variant="contained"
-                color="secondary"
-                size="small"
-                disabled={isLoading}
-              >
-                {isLoading ? (
-                  <CircularProgress size={20} sx={{ color: "white" }} />
-                ) : (
-                  "Log in"
-                )}
-              </Button>
-            </Grid>
-          </Grid>
+            <MuiTextField
+              name="email"
+              control={control}
+              rules={{
+                required: "Email is required",
+                pattern: {
+                  value: /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i,
+                  message: "Invalid email address",
+                },
+              }}
+              formLabel="Email"
+              placeholder="xyz@example.com"
+              autoComplete="email"
+              disabled={isLoading}
+              formControlProps={{ margin: "dense" }}
+              formLabelProps={{ required: true }}
+              slotProps={{
+                input: {
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <EmailIcon fontSize="small" color="primary" />
+                    </InputAdornment>
+                  ),
+                },
+              }}
+            />
+            <MuiTextField
+              name="password"
+              control={control}
+              rules={{
+                required: "Password is required",
+                minLength: {
+                  value: 5,
+                  message: "Password must be at least 5 characters",
+                },
+              }}
+              formLabel="Password"
+              placeholder="••••••"
+              type={showPassword ? "text" : "password"}
+              autoComplete="current-password"
+              disabled={isLoading}
+              formControlProps={{ margin: "dense" }}
+              formLabelProps={{ required: true }}
+              slotProps={{
+                input: {
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <LockIcon fontSize="small" color="primary" />
+                    </InputAdornment>
+                  ),
+                  endAdornment: (
+                    <InputAdornment
+                      position="end"
+                      size="small"
+                      sx={{ cursor: isLoading ? "default" : "pointer" }}
+                      onClick={togglePassword}
+                      disabled={isLoading}
+                    >
+                      {showPassword ? (
+                        <VisibilityOffIcon fontSize="small" />
+                      ) : (
+                        <VisibilityIcon fontSize="small" />
+                      )}
+                    </InputAdornment>
+                  ),
+                },
+              }}
+            />
+            <Button
+              type="submit"
+              fullWidth
+              variant="contained"
+              color="secondary"
+              size="small"
+              disabled={isLoading}
+              loading={isLoading}
+              loadingIndicator={
+                <CircularProgress size={20} sx={{ color: "white" }} />
+              }
+              loadingPosition="start"
+              sx={{ mt: 2 }}
+            >
+              {isLoading ? "Logging In..." : "Login"}
+            </Button>
+          </CardContent>
+          <Button
+            variant="outlined"
+            color="secondary"
+            size="small"
+            fullWidth
+            disabled={isLoading}
+            onClick={() => navigate("/forgot-password")}
+            sx={{ mt: 2 }}
+          >
+            Forgot Password
+          </Button>
         </Card>
       </Grid>
     </Grid>

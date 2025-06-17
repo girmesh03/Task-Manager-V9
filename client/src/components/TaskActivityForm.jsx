@@ -18,10 +18,12 @@ import MuiTextField from "./MuiTextField";
 import DropdownMenu from "./DropdownMenu";
 import { statusTypes } from "../utils/constants";
 
+// import { socket } from "../socket";
+
 const validTransitions = {
   "To Do": ["In Progress", "Pending"],
-  "In Progress": ["Completed", "Pending"],
-  Completed: ["Pending"],
+  "In Progress": ["In Progress", "Completed", "Pending"],
+  Completed: ["Pending", "In Progress"],
   Pending: ["In Progress", "Completed"],
 };
 
@@ -39,7 +41,7 @@ const TaskActivityForm = ({ taskId, taskStatus, taskType, setTabIndex }) => {
 
   const onSubmit = async (data) => {
     try {
-      const response = await createActivity({
+      const { message } = await createActivity({
         taskId,
         activityData: {
           description: data.description,
@@ -50,11 +52,16 @@ const TaskActivityForm = ({ taskId, taskStatus, taskType, setTabIndex }) => {
           },
         },
       }).unwrap();
-      toast.success(response.message);
+
+      // socket.on("new-activity", (activity) => {
+      //   console.log("New activity received:", activity);
+      // });
+
+      toast.success(message || "Activity created successfully");
       reset();
       setTabIndex("2");
     } catch (error) {
-      toast.error(error.data?.message || "Failed to create activity");
+      toast.error(error?.data?.message || "Failed to create activity");
     }
   };
 
@@ -109,10 +116,8 @@ const TaskActivityForm = ({ taskId, taskStatus, taskType, setTabIndex }) => {
             <DropdownMenu
               name="statusChange"
               control={control}
-              options={statusTypes.filter(
-                (option) =>
-                  option.label !== taskStatus &&
-                  validTransitions[taskStatus].includes(option.label)
+              options={statusTypes.filter((option) =>
+                validTransitions[taskStatus].includes(option.label)
               )}
               rules={{
                 validate: {
@@ -120,9 +125,6 @@ const TaskActivityForm = ({ taskId, taskStatus, taskType, setTabIndex }) => {
                     !value ||
                     validTransitions[taskStatus]?.includes(value) ||
                     "Invalid status transition",
-                  validStatus: (value) =>
-                    value !== taskStatus ||
-                    "Cannot transition to the same status",
                 },
               }}
             />

@@ -20,7 +20,9 @@ export const reportApiSlice = apiSlice.injectEndpoints({
           currentDate,
         },
       }),
-      providesTags: ["Reports"],
+      providesTags: (result, error, args) => [
+        { type: "Report", id: `TASK-${JSON.stringify(args)}` },
+      ],
     }),
     getRoutineTaskReports: builder.query({
       query: ({ departmentId, page = 1, limit = 10, currentDate }) => ({
@@ -31,7 +33,9 @@ export const reportApiSlice = apiSlice.injectEndpoints({
           currentDate,
         },
       }),
-      providesTags: ["Reports"],
+      providesTags: (result, error, args) => [
+        { type: "Report", id: `ROUTINE-${JSON.stringify(args)}` },
+      ],
     }),
   }),
 });

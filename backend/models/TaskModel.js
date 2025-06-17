@@ -1,6 +1,9 @@
 import mongoose from "mongoose";
 import mongoosePaginate from "mongoose-paginate-v2";
+import dayjs from "dayjs";
+
 import { getFormattedDate } from "../utils/GetDateIntervals.js";
+import { deleteFromCloudinary } from "../utils/cloudinaryHelper.js";
 
 const taskSchema = new mongoose.Schema(
   {
@@ -112,14 +115,14 @@ taskSchema.plugin(mongoosePaginate);
 // ===================== Auto-Status Updates =====================
 taskSchema.pre("save", async function (next) {
   const session = this.$session();
-  const now = getFormattedDate(new Date(), 0);
+  // const now = getFormattedDate(dayjs().format("YYYY-MM-DD"), 0);
 
-  if (getFormattedDate(this.dueDate, 0) <= now && this.status !== "Completed") {
-    this.status = "Pending";
-    return next();
-  }
+  // if (getFormattedDate(this.dueDate, 0) <= now && this.status !== "Completed") {
+  //   this.status = "Pending";
+  //   return next();
+  // }
 
-  if (["Pending", "Completed"].includes(this.status)) return next();
+  // if (["Pending", "Completed"].includes(this.status)) return next();
 
   if (this.status === "To Do") {
     const query = mongoose
@@ -135,6 +138,43 @@ taskSchema.pre("save", async function (next) {
 });
 
 // ===================== Middleware =====================
+// taskSchema.pre(
+//   "deleteOne",
+//   { document: true, query: false },
+//   async function (next) {
+//     try {
+//       const taskId = this._id;
+//       const session = this.$session();
+
+//       await Promise.all([
+//         // Delete related task activities
+//         mongoose
+//           .model("TaskActivity")
+//           .deleteMany({ task: taskId })
+//           .setOptions({ session }),
+
+//         // Delete notifications referencing the task
+//         mongoose
+//           .model("Notification")
+//           .deleteMany({
+//             $or: [
+//               { task: taskId }, // Direct task reference
+//               {
+//                 linkedDocument: taskId,
+//                 linkedDocumentType: "Task", // Reference through linkedDocument
+//               },
+//             ],
+//           })
+//           .setOptions({ session }),
+//       ]);
+
+//       next();
+//     } catch (err) {
+//       next(err);
+//     }
+//   }
+// );
+
 taskSchema.pre(
   "deleteOne",
   { document: true, query: false },
@@ -143,27 +183,33 @@ taskSchema.pre(
       const taskId = this._id;
       const session = this.$session();
 
-      await Promise.all([
-        // Delete related task activities
-        mongoose
-          .model("TaskActivity")
-          .deleteMany({ task: taskId })
-          .setOptions({ session }),
+      // Collect public_ids from ProjectTask proforma
+      if (this.taskType === "ProjectTask" && this.proforma?.length > 0) {
+        const publicIds = this.proforma.map((p) => p.public_id).filter(Boolean);
+        if (publicIds.length > 0) {
+          await deleteFromCloudinary(publicIds, "raw"); // Use 'raw' as it handles non-images
+        }
+      }
 
-        // Delete notifications referencing the task
-        mongoose
-          .model("Notification")
-          .deleteMany({
-            $or: [
-              { task: taskId }, // Direct task reference
-              {
-                linkedDocument: taskId,
-                linkedDocumentType: "Task", // Reference through linkedDocument
-              },
-            ],
-          })
-          .setOptions({ session }),
-      ]);
+      // Find all activities to trigger their own delete hooks
+      const activities = await mongoose
+        .model("TaskActivity")
+        .find({ task: taskId })
+        .session(session);
+      for (const activity of activities) {
+        await activity.deleteOne({ session }); // This will trigger TaskActivity's pre('deleteOne') hook
+      }
+
+      // Delete notifications referencing the task
+      await mongoose
+        .model("Notification")
+        .deleteMany({
+          $or: [
+            { task: taskId },
+            { linkedDocument: taskId, linkedDocumentType: "Task" },
+          ],
+        })
+        .session(session);
 
       next();
     } catch (err) {

@@ -50,7 +50,7 @@ const TaskTimeLineItem = ({ activity, isMobile, index }) => {
       }).unwrap();
       toast.success("Activity deleted successfully");
     } catch (error) {
-      toast.error(error.data.message || "Failed to delete activity");
+      toast.error(error?.data?.message || "Failed to delete activity");
     }
   };
 

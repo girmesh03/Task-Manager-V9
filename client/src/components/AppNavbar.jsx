@@ -28,7 +28,10 @@ const AppNavbar = () => {
       position="sticky"
       sx={{ display: { xs: "block", md: "none" } }}
     >
-      <CustomLogo route="/dashboard" />
+      <CustomLogo
+        route="/dashboard"
+        // sx={{ fontSize: "clamp(1rem, 1.5vw, 2rem)" }}
+      />
       <Stack direction="row" alignItems="center" spacing={1}>
         <ColorModeIconDropdown />
         <MenuButton aria-label="menu" onClick={toggleDrawer(true)}>

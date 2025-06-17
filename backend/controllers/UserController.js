@@ -11,6 +11,7 @@ import TaskActivity from "../models/TaskActivityModel.js";
 import Notification from "../models/NotificationModel.js";
 
 import { sendVerificationEmail } from "../utils/SendEmail.js";
+import { emitToManagers } from "../utils/SocketEmitter.js";
 
 import {
   getDateIntervals,
@@ -24,6 +25,8 @@ import {
   getUserRoutineTaskStatisticsForChartPipeline,
   fetchUserStatistics,
 } from "../pipelines/user.js";
+
+import { emitToUser } from "../utils/SocketEmitter.js";
 
 // @desc    Create user
 // @route   POST /api/users/department/:departmentId
@@ -98,10 +101,14 @@ const createUser = asyncHandler(async (req, res, next) => {
       }
     }
 
-    // Send verification email
+    // Send verification email and emit welcome event
     await sendVerificationEmail(newUser.email, newUser.verificationToken);
+    emitToUser(newUser._id, "welcome", {
+      message: "Your account was created successfully!",
+    });
 
     await session.commitTransaction();
+
     res.status(201).json({
       success: true,
       user: newUser,
@@ -286,6 +293,16 @@ const updateUserById = asyncHandler(async (req, res, next) => {
       session,
     });
 
+    if (updates.role) {
+      const notification = {
+        user: userId,
+        type: "SystemAlert",
+        message: `Your role was changed to ${updates.role}`,
+      };
+      await Notification.create(notification);
+      emitToUser(userId, "role-change", notification);
+    }
+
     await session.commitTransaction();
     res.status(200).json({
       success: true,
@@ -303,6 +320,114 @@ const updateUserById = asyncHandler(async (req, res, next) => {
 // @desc    Delete user
 // @route   DELETE /api/users/department/:departmentId/user/:userId
 // @access  Private (SuperAdmin)
+// const deleteUserById = asyncHandler(async (req, res, next) => {
+//   const session = await mongoose.startSession();
+//   session.startTransaction();
+
+//   try {
+//     const { departmentId, userId } = req.params;
+//     const requester = req.user;
+
+//     const user = await User.findOne({ _id: userId, department: departmentId })
+//       .session(session)
+//       .populate("department");
+//     if (!user) throw new CustomError("User not found", 404);
+
+//     // Authorization check - Only SuperAdmin can perform permanent deletion
+//     if (requester.role !== "SuperAdmin") {
+//       throw new CustomError(
+//         "Only SuperAdmin can delete users permanently",
+//         403
+//       );
+//     }
+
+//     // Prevent deletion of protected roles
+//     if (["SuperAdmin", "Admin", "Manager"].includes(user.role)) {
+//       // Check for active dependencies
+//       const taskCount = await Task.countDocuments({
+//         createdBy: userId,
+//       }).session(session);
+//       const managedDepartments = await Department.countDocuments({
+//         managers: userId,
+//       }).session(session);
+
+//       if (taskCount > 0 || managedDepartments > 0) {
+//         throw new CustomError(
+//           `Cannot delete ${user.role} with active dependencies (tasks or managed departments)`,
+//           400
+//         );
+//       }
+//     }
+
+//     // Special handling for SuperAdmin
+//     if (user.role === "SuperAdmin") {
+//       const otherSuperAdmins = await User.countDocuments({
+//         department: user.department,
+//         role: "SuperAdmin",
+//         _id: { $ne: userId },
+//       }).session(session);
+
+//       if (otherSuperAdmins === 0) {
+//         throw new CustomError(
+//           "Cannot delete last SuperAdmin in department. Promote another user first.",
+//           400
+//         );
+//       }
+//     }
+
+//     // Delete all user-related data in atomic operations
+//     await Promise.all([
+//       // Remove from department managers
+//       Department.updateMany(
+//         { managers: userId },
+//         { $pull: { managers: userId } },
+//         { session }
+//       ),
+
+//       // Delete tasks created by user and their dependencies
+//       Task.deleteMany({ createdBy: userId }).session(session),
+
+//       // Remove from task assignments
+//       Task.updateMany(
+//         { assignedTo: userId },
+//         { $pull: { assignedTo: userId } },
+//         { session }
+//       ),
+
+//       // Delete task activities
+//       TaskActivity.deleteMany({ performedBy: userId }).session(session),
+
+//       // Delete notifications
+//       Notification.deleteMany({
+//         $or: [{ user: userId }, { "linkedDocument.user": userId }],
+//       }).session(session),
+//     ]);
+
+//     const notificationMessage = `User ${user.fullName} was deleted`;
+//     await emitToManagers(user.department, "user-deleted", {
+//       message: notificationMessage,
+//       userId,
+//     });
+
+//     // Permanent deletion
+//     await User.deleteOne({ _id: userId }).session(session);
+
+//     await session.commitTransaction();
+//     res.status(200).json({
+//       success: true,
+//       message: "User and all associated data deleted permanently",
+//     });
+//   } catch (error) {
+//     await session.abortTransaction();
+//     next(error);
+//   } finally {
+//     session.endSession();
+//   }
+// });
+
+// @desc    Delete user
+// @route   DELETE /api/users/department/:departmentId/user/:userId
+// @access  Private (SuperAdmin)
 const deleteUserById = asyncHandler(async (req, res, next) => {
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -314,7 +439,10 @@ const deleteUserById = asyncHandler(async (req, res, next) => {
     const user = await User.findOne({ _id: userId, department: departmentId })
       .session(session)
       .populate("department");
-    if (!user) throw new CustomError("User not found", 404);
+
+    if (!user) {
+      throw new CustomError("User not found", 404);
+    }
 
     // Authorization check - Only SuperAdmin can perform permanent deletion
     if (requester.role !== "SuperAdmin") {
@@ -324,9 +452,8 @@ const deleteUserById = asyncHandler(async (req, res, next) => {
       );
     }
 
-    // Prevent deletion of protected roles
+    // Prevent deletion of protected roles with active dependencies
     if (["SuperAdmin", "Admin", "Manager"].includes(user.role)) {
-      // Check for active dependencies
       const taskCount = await Task.countDocuments({
         createdBy: userId,
       }).session(session);
@@ -342,10 +469,10 @@ const deleteUserById = asyncHandler(async (req, res, next) => {
       }
     }
 
-    // Special handling for SuperAdmin
+    // Special handling for SuperAdmin to prevent leaving a department leaderless
     if (user.role === "SuperAdmin") {
       const otherSuperAdmins = await User.countDocuments({
-        department: user.department,
+        department: user.department._id,
         role: "SuperAdmin",
         _id: { $ne: userId },
       }).session(session);
@@ -358,38 +485,65 @@ const deleteUserById = asyncHandler(async (req, res, next) => {
       }
     }
 
-    // Delete all user-related data in atomic operations
-    await Promise.all([
-      // Remove from department managers
-      Department.updateMany(
-        { managers: userId },
-        { $pull: { managers: userId } },
-        { session }
-      ),
+    // --- Start of Data Cleanup ---
 
-      // Delete tasks created by user and their dependencies
-      Task.deleteMany({ createdBy: userId }).session(session),
+    // 1. Delete tasks created by the user.
+    // We loop here to ensure each task's pre('deleteOne') hook is fired,
+    // which handles deleting related attachments from Cloudinary and activities.
+    const tasksToDelete = await Task.find({ createdBy: userId }).session(
+      session
+    );
+    for (const task of tasksToDelete) {
+      await task.deleteOne({ session });
+    }
 
-      // Remove from task assignments
-      Task.updateMany(
-        { assignedTo: userId },
-        { $pull: { assignedTo: userId } },
-        { session }
-      ),
+    // 2. Delete task activities performed by the user.
+    // This also triggers pre-delete hooks on each activity if they exist.
+    const activitiesToDelete = await TaskActivity.find({
+      performedBy: userId,
+    }).session(session);
+    for (const activity of activitiesToDelete) {
+      await activity.deleteOne({ session });
+    }
 
-      // Delete task activities
-      TaskActivity.deleteMany({ performedBy: userId }).session(session),
+    // 3. Remove user from any department's manager list.
+    await Department.updateMany(
+      { managers: userId },
+      { $pull: { managers: userId } },
+      { session }
+    );
 
-      // Delete notifications
-      Notification.deleteMany({
+    // 4. Remove user from any task assignments.
+    await Task.updateMany(
+      { assignedTo: userId },
+      { $pull: { assignedTo: userId } },
+      { session }
+    );
+
+    // 5. Delete all notifications related to the user.
+    // `deleteMany` is safe here as notifications don't have Cloudinary assets.
+    await Notification.deleteMany(
+      {
         $or: [{ user: userId }, { "linkedDocument.user": userId }],
-      }).session(session),
-    ]);
+      },
+      { session }
+    );
 
-    // Permanent deletion
-    await User.deleteOne({ _id: userId }).session(session);
+    // --- End of Data Cleanup ---
+
+    // Emit a notification to managers about the deletion
+    const notificationMessage = `User ${user.fullName} was deleted from your department.`;
+    await emitToManagers(user.department._id, "user-deleted", {
+      message: notificationMessage,
+      userId,
+    });
+
+    // 6. Finally, delete the user. This triggers the user's own pre('deleteOne')
+    // hook, which will delete their profile picture from Cloudinary.
+    await user.deleteOne({ session });
 
     await session.commitTransaction();
+
     res.status(200).json({
       success: true,
       message: "User and all associated data deleted permanently",

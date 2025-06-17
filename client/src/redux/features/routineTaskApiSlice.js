@@ -12,9 +12,9 @@ export const routineTaskApiSlice = apiSlice.injectEndpoints({
         pagination: response.pagination,
       }),
       providesTags: (result, error, { departmentId }) => [
-        { type: "RoutineTasks", id: `DEPARTMENT-${departmentId}` },
+        { type: "RoutineTask", id: `DEPARTMENT-${departmentId}` },
         ...(result?.tasks?.map((task) => ({
-          type: "RoutineTasks",
+          type: "RoutineTask",
           id: task._id,
         })) || []),
       ],
@@ -27,7 +27,7 @@ export const routineTaskApiSlice = apiSlice.injectEndpoints({
         task: response.task,
       }),
       providesTags: (result, error, { taskId }) => [
-        { type: "RoutineTasks", id: taskId },
+        { type: "RoutineTask", id: taskId },
       ],
     }),
     createRoutineTask: builder.mutation({
@@ -37,8 +37,8 @@ export const routineTaskApiSlice = apiSlice.injectEndpoints({
         body: task,
       }),
       invalidatesTags: (result, error, { departmentId }) => [
-        { type: "RoutineTasks", id: `DEPARTMENT-${departmentId}` },
-        "Dashboard",
+        { type: "RoutineTask", id: `DEPARTMENT-${departmentId}` },
+        { type: "Statistics", id: `DEPARTMENT-${departmentId}` },
       ],
     }),
     updateRoutineTask: builder.mutation({
@@ -48,9 +48,9 @@ export const routineTaskApiSlice = apiSlice.injectEndpoints({
         body: task,
       }),
       invalidatesTags: (result, error, { departmentId, taskId }) => [
-        { type: "RoutineTasks", id: `DEPARTMENT-${departmentId}` },
-        { type: "RoutineTasks", id: taskId },
-        "Dashboard",
+        { type: "RoutineTask", id: `DEPARTMENT-${departmentId}` },
+        { type: "RoutineTask", id: taskId },
+        { type: "Statistics", id: `DEPARTMENT-${departmentId}` },
       ],
     }),
     deleteRoutineTask: builder.mutation({
@@ -59,31 +59,31 @@ export const routineTaskApiSlice = apiSlice.injectEndpoints({
         method: "DELETE",
       }),
       invalidatesTags: (result, error, { departmentId, taskId }) => [
-        { type: "RoutineTasks", id: `DEPARTMENT-${departmentId}` },
-        { type: "RoutineTasks", id: taskId },
-        "Dashboard",
+        { type: "RoutineTask", id: `DEPARTMENT-${departmentId}` },
+        { type: "RoutineTask", id: taskId },
+        { type: "Statistics", id: `DEPARTMENT-${departmentId}` },
       ],
-      async onQueryStarted(
-        { departmentId, taskId },
-        { dispatch, queryFulfilled }
-      ) {
-        try {
-          await queryFulfilled;
+      // async onQueryStarted(
+      //   { departmentId, taskId },
+      //   { dispatch, queryFulfilled }
+      // ) {
+      //   try {
+      //     await queryFulfilled;
 
-          dispatch(
-            routineTaskApiSlice.util.updateQueryData(
-              "getRoutineTasks",
-              { departmentId },
-              (draft) => {
-                draft.tasks = draft.tasks.filter((task) => task._id !== taskId);
-              }
-            )
-          );
-        } catch (error) {
-          // console.log(error);
-          return error;
-        }
-      },
+      //     dispatch(
+      //       routineTaskApiSlice.util.updateQueryData(
+      //         "getRoutineTasks",
+      //         { departmentId },
+      //         (draft) => {
+      //           draft.tasks = draft.tasks.filter((task) => task._id !== taskId);
+      //         }
+      //       )
+      //     );
+      //   } catch (error) {
+      //     // console.log(error);
+      //     return error;
+      //   }
+      // },
     }),
   }),
 });
