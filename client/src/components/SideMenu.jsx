@@ -79,7 +79,7 @@ const SideMenu = () => {
         <Avatar
           sizes="small"
           alt={currentUser?.firstName}
-          src={currentUser?.profilePicture}
+          src={currentUser?.profilePicture?.url}
           sx={{ width: 36, height: 36 }}
         />
         <Box sx={{ overflow: "hidden", textOverflow: "ellipsis" }}>

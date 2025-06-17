@@ -9,7 +9,11 @@ import ProjectTask from "../models/ProjectTaskModel.js";
 import Notification from "../models/NotificationModel.js";
 import TaskActivity from "../models/TaskActivityModel.js";
 
-import { getFormattedDate } from "../utils/GetDateIntervals.js";
+import {
+  getDateIntervals,
+  getFormattedDate,
+} from "../utils/GetDateIntervals.js";
+import { emitToUser, emitToManagers } from "../utils/SocketEmitter.js";
 
 // Authorization Helper
 const authorizeTaskAccess = (user, task) => {
@@ -136,6 +140,9 @@ const createTask = asyncHandler(async (req, res, next) => {
 
     if (notifications.length > 0) {
       await Notification.insertMany(notifications, { session });
+      notifications.forEach((notif) => {
+        emitToUser(notif.user, "new-notification", notif);
+      });
     }
 
     // Commit transaction
@@ -212,11 +219,17 @@ const getAllTasks = asyncHandler(async (req, res, next) => {
       status,
       sort = "-createdAt",
       taskType,
+      currentDate,
     } = req.query;
 
     // Build base query, manager, admin their department task, super admin all
     // other than super admin, can't reach here due to department access middleware
     const query = { department: departmentId };
+
+    const dates = getDateIntervals(currentDate);
+    if (!dates) throw new CustomError("Invalid date format", 400);
+    const { last30DaysStart } = dates;
+    query.createdAt = { $gte: last30DaysStart };
 
     // Apply task type filter
     if (taskType && ["AssignedTask", "ProjectTask"].includes(taskType)) {
@@ -655,9 +668,12 @@ const updateTaskById = asyncHandler(async (req, res, next) => {
       }
     }
 
-    // Save notifications
+    // Save notifications and emit events
     if (notifications.length) {
       await Notification.insertMany(notifications, { session });
+      notifications.forEach((notif) => {
+        emitToUser(notif.user, "notification-update", notif);
+      });
     }
 
     // 14. Get updated task data
@@ -696,6 +712,15 @@ const updateTaskById = asyncHandler(async (req, res, next) => {
     }
 
     await session.commitTransaction();
+
+    if (notifications.length) {
+      notifications.forEach((notif) => {
+        emitToUser(notif.user, "new-notification", notif);
+
+        // Also store in DB
+        // Notification.create(notif);
+      });
+    }
 
     res.status(200).json({
       success: true,
@@ -755,6 +780,13 @@ const deleteTaskById = asyncHandler(async (req, res, next) => {
     }
 
     // 6. Delete task (middleware handles related deletions)
+    const notificationMessage = `Task "${task.title}" was deleted`;
+
+    await emitToManagers(task.department, "task-deleted", {
+      message: notificationMessage,
+      taskId,
+    });
+
     await task.deleteOne({ session });
 
     // 7. Commit transaction
@@ -815,19 +847,31 @@ const createTaskActivity = asyncHandler(async (req, res, next) => {
     };
 
     const activity = new TaskActivity(activityData);
-    await activity.save({ session });
+    // await activity.save({ session });
+    const createdActivity = await activity.save({ session });
+
+    if (!createdActivity) {
+      throw new CustomError("Failed to create activity", 400);
+    }
 
     // 5. Create notification for task creator
     if (!isCreator) {
       const notification = new Notification({
         user: task.createdBy,
+        task: task._id,
         type: "TaskUpdate",
         message: `New activity added to task: ${task.title}`,
         linkedDocument: activity._id,
         linkedDocumentType: "TaskActivity",
         department: task.department,
       });
+
       await notification.save({ session });
+
+      emitToUser(task.createdBy, "new-activity", {
+        ...notification.toObject(),
+        taskTitle: task.title,
+      });
     }
 
     await session.commitTransaction();
@@ -850,7 +894,6 @@ const createTaskActivity = asyncHandler(async (req, res, next) => {
     await session.abortTransaction();
     next(error);
   } finally {
-    console.log("here");
     session.endSession();
   }
 });

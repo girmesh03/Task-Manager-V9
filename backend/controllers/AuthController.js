@@ -16,6 +16,8 @@ import {
 
 import { getFormattedDate } from "../utils/GetDateIntervals.js";
 
+import { emitToUser } from "../utils/SocketEmitter.js";
+
 // @desc Login
 // @route POST /api/auth/login
 // @access Public
@@ -99,6 +101,10 @@ const verifyEmail = asyncHandler(async (req, res, next) => {
       path: "managers",
       select: "firstName lastName fullName email position role profilePicture",
     },
+  });
+
+  emitToUser(user._id, "email-verified", {
+    message: "Your email was verified successfully!",
   });
 
   res.status(200).json({
@@ -197,6 +203,10 @@ const resetPassword = asyncHandler(async (req, res, next) => {
   await user.save();
 
   await sendRestSuccessEmail(user.email);
+
+  emitToUser(user._id, "password-reset", {
+    message: "Your password was reset successfully",
+  });
 
   res.cookie("access_token", "", {
     expires: getFormattedDate(dayjs().format("YYYY-MM-DD"), 0),

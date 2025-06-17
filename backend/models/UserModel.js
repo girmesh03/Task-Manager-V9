@@ -2,8 +2,10 @@ import mongoose from "mongoose";
 import mongoosePaginate from "mongoose-paginate-v2";
 import bcrypt from "bcrypt";
 import crypto from "crypto";
+import dayjs from "dayjs";
 
 import { getFormattedDate } from "../utils/GetDateIntervals.js";
+import { deleteFromCloudinary } from "../utils/cloudinaryHelper.js";
 
 const userSchema = new mongoose.Schema(
   {
@@ -91,6 +93,13 @@ const userSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    pendingEmail: {
+      type: String,
+      trim: true,
+      lowercase: true,
+    },
+    emailChangeToken: String,
+    emailChangeTokenExpiry: Date,
   },
   {
     timestamps: true,
@@ -140,6 +149,7 @@ userSchema.virtual("managedDepartment", {
 
 // ===================== Indexes =====================
 userSchema.index({ verificationTokenExpiry: 1 }, { expireAfterSeconds: 900 }); // 15min TTL
+userSchema.index({ emailChangeTokenExpiry: 1 }, { expireAfterSeconds: 900 }); // 15min TTL for email change token
 userSchema.index({ resetPasswordExpiry: 1 }, { expireAfterSeconds: 3600 }); // 1hr TTL
 userSchema.index({ department: 1, role: 1 });
 
@@ -192,6 +202,22 @@ userSchema.pre("validate", async function (next) {
   next();
 });
 
+userSchema.pre(
+  "deleteOne",
+  { document: true, query: false },
+  async function (next) {
+    try {
+      // Delete profile picture from Cloudinary
+      if (this.profilePicture?.public_id) {
+        await deleteFromCloudinary(this.profilePicture.public_id, "image");
+      }
+      next();
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
 // ===================== Methods =====================
 userSchema.methods.matchPassword = async function (enteredPassword) {
   const userWithPassword = this.password
@@ -202,12 +228,15 @@ userSchema.methods.matchPassword = async function (enteredPassword) {
 
 userSchema.methods.generateVerificationToken = function () {
   this.verificationToken = crypto.randomBytes(3).toString("hex").toUpperCase(); // '4D5E6F'
-  this.verificationTokenExpiry = getFormattedDate(new Date(), 15); // 15min
+  this.verificationTokenExpiry = getFormattedDate(
+    dayjs().format("YYYY-MM-DD"),
+    15
+  ); // 15min
 };
 
 userSchema.methods.generatePasswordResetToken = function () {
   this.resetPasswordToken = crypto.randomBytes(32).toString("hex");
-  this.resetPasswordExpiry = getFormattedDate(new Date(), 60); // 1hr
+  this.resetPasswordExpiry = getFormattedDate(dayjs().format("YYYY-MM-DD"), 60); // 1hr
 };
 
 const User = mongoose.model("User", userSchema);

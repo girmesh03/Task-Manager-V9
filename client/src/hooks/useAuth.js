@@ -19,6 +19,7 @@ const useAuth = () => {
     isAuthenticated,
     currentUserId: currentUser?._id,
     currentUserRole: currentUser?.role,
+    currentUserDepartmentId: currentUser?.department?._id,
     isSuperAdmin,
     isAdmin,
     isManager,

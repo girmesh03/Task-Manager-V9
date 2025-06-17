@@ -228,71 +228,47 @@ const CreateUpdateRoutineTask = ({
           </Grid>
         )}
 
-        <Grid container size={{ xs: 12 }} spacing={1}>
+        <Grid container size={{ xs: 12 }} spacing={2}>
           {fields.length > 0 ? (
             fields.map((item, index) => (
               <Grid size={{ xs: 12 }} key={item.id}>
                 <Stack
-                  direction={{ xs: "column", sm: "row" }}
-                  alignItems="flex-start"
+                  direction="row"
                   spacing={1}
+                  sx={{
+                    flexGrow: 1,
+                    overflow: "hidden",
+                    whiteSpace: "break-spaces",
+                    textOverflow: "break-all",
+                    wordWrap: "anywhere",
+                  }}
                 >
-                  <Stack
-                    direction="row"
-                    spacing={1}
-                    sx={{
-                      flexGrow: 1,
-                      overflow: "hidden",
-                      whiteSpace: "break-spaces",
-                      textOverflow: "break-all",
-                      wordWrap: "anywhere",
+                  <Checkbox
+                    checked={item.isCompleted}
+                    onChange={(e) =>
+                      update(index, {
+                        ...item,
+                        isCompleted: e.target.checked,
+                      })
+                    }
+                    size="small"
+                  />
+                  <Typography variant="body2" sx={{ flexGrow: 1 }}>
+                    {item.description}
+                  </Typography>
+                  <DeleteIcon
+                    fontSize="small"
+                    onClick={() => remove(index)}
+                    sx={{ color: "error.main", cursor: "pointer" }}
+                  />
+                  <EditIcon
+                    fontSize="small"
+                    onClick={() => {
+                      setValue("description", item.description);
+                      setEditingIndex(index);
                     }}
-                  >
-                    <Checkbox
-                      checked={item.isCompleted}
-                      onChange={(e) =>
-                        update(index, {
-                          ...item,
-                          isCompleted: e.target.checked,
-                        })
-                      }
-                      size="small"
-                    />
-                    <Typography
-                      variant="body2"
-                      sx={
-                        {
-                          // flexGrow: 1,
-                        }
-                      }
-                    >
-                      {item.description}
-                    </Typography>
-                  </Stack>
-
-                  <Stack
-                    direction="row"
-                    spacing={1}
-                    alignSelf={{ xs: "flex-end" }}
-                  >
-                    <IconButton
-                      size="small"
-                      color="error"
-                      onClick={() => remove(index)}
-                    >
-                      <DeleteIcon fontSize="small" />
-                    </IconButton>
-                    <IconButton
-                      size="small"
-                      color="primary"
-                      onClick={() => {
-                        setValue("description", item.description);
-                        setEditingIndex(index);
-                      }}
-                    >
-                      <EditIcon fontSize="small" />
-                    </IconButton>
-                  </Stack>
+                    sx={{ color: "primary.main", cursor: "pointer" }}
+                  />
                 </Stack>
               </Grid>
             ))

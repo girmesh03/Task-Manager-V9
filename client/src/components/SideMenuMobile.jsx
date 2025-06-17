@@ -23,7 +23,7 @@ import DepartmentMenu from "./DepartmentMenu";
 import MenuButton from "./MenuButton";
 import MenuContent from "./MenuContent";
 
-import {drawerWidth} from "../utils/constants";
+import { drawerWidth } from "../utils/constants";
 
 // styled components
 const Drawer = styled(MuiDrawer)({

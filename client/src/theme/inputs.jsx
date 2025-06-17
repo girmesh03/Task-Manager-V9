@@ -384,9 +384,18 @@ export const inputsCustomizations = {
   },
   MuiOutlinedInput: {
     styleOverrides: {
-      input: {
+      input: ({ theme }) => ({
         padding: 0,
-      },
+
+        // default = light‑mode autofill override
+        "&:-webkit-autofill, &:-webkit-autofill:hover, &:-webkit-autofill:focus":
+          {
+            // use paper background so Chrome’s yellow is fully covered
+            WebkitBoxShadow: `inset 0 0 0px 1000px ${theme.palette.background.default} !important`,
+            WebkitTextFillColor: `${theme.palette.text.primary} !important`,
+            caretColor: `${theme.palette.text.primary} !important`,
+          },
+      }),
       root: ({ theme }) => ({
         padding: "8px 12px",
         color: (theme.vars || theme).palette.text.primary,

@@ -28,6 +28,14 @@ const projectTaskSchema = new mongoose.Schema(
           type: String,
           required: [true, "Proforma URL is required"],
         },
+        public_id: {
+          type: String,
+          required: [true, "Proforma public_id is required"],
+        },
+        name: {
+          type: String,
+          required: [true, "Proforma file name is required"],
+        },
         type: {
           type: String,
           enum: ["image", "document", "invoice", "pdf"],

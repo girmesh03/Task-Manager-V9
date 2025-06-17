@@ -6,7 +6,7 @@ import mongoose from "mongoose";
 import app from "./app.js";
 
 import connectDB from "./config/db.js";
-import corsOptions from "./config/corsOptions.js";
+import { corsSocketOptions } from "./config/corsOptions.js";
 import setupSocketIO from "./socket.js";
 
 import User from "./models/UserModel.js";
@@ -19,7 +19,7 @@ const PORT = process.env.PORT || 5000;
 const server = http.createServer(app);
 
 // Setup Socket.IO
-const io = setupSocketIO(server, corsOptions);
+const io = setupSocketIO(server, corsSocketOptions);
 
 // Connect to MongoDB
 connectDB();

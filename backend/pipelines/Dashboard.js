@@ -211,6 +211,7 @@ export const getAssignedTaskStatisticsPipeline = ({
   ];
 };
 
+// main
 // Task Statistics Pipeline for Routine Tasks
 export const getRoutineTaskStatisticsPipeline = ({
   currentStartDate,
@@ -383,7 +384,89 @@ export const getRoutineTaskStatisticsPipeline = ({
   ];
 };
 
-// Task Statistics Pipeline for Assigned Tasks
+// alternate pipeline
+// export const getRoutineTaskUserStatsPipeline = ({
+//   startDate,
+//   endDate,
+//   departmentId,
+// }) => {
+//   return [
+//     // Stage 1: Match routine tasks by department and date range
+//     {
+//       $match: {
+//         department: departmentId,
+//         date: { $gte: startDate, $lte: endDate },
+//       },
+//     },
+//     // Stage 2: Unwind to access individual performed tasks
+//     { $unwind: "$performedTasks" },
+//     // Stage 3: Group by performedBy user and calculate counts
+//     {
+//       $group: {
+//         _id: "$performedBy",
+//         totalTasks: { $sum: 1 },
+//         completedTasks: {
+//           $sum: {
+//             $cond: {
+//               if: "$performedTasks.isCompleted",
+//               then: 1,
+//               else: 0,
+//             },
+//           },
+//         },
+//       },
+//     },
+//     // Stage 4: Calculate completion rate
+//     {
+//       $addFields: {
+//         completionRate: {
+//           $cond: {
+//             if: { $eq: ["$totalTasks", 0] },
+//             then: 0,
+//             else: {
+//               $multiply: [{ $divide: ["$completedTasks", "$totalTasks"] }, 100],
+//             },
+//           },
+//         },
+//       },
+//     },
+//     // Stage 5: Lookup user details
+//     {
+//       $lookup: {
+//         from: "users",
+//         localField: "_id",
+//         foreignField: "_id",
+//         as: "userDetails",
+//       },
+//     },
+//     // Stage 6: Unwind user details
+//     { $unwind: "$userDetails" },
+//     // Stage 7: Project final output
+//     {
+//       $project: {
+//         _id: 0,
+//         userId: "$_id",
+//         fullName: {
+//           $concat: ["$userDetails.firstName", " ", "$userDetails.lastName"],
+//         },
+//         email: "$userDetails.email",
+//         position: "$userDetails.position",
+//         profilePicture: "$userDetails.profilePicture",
+//         totalTasks: 1,
+//         completedTasks: 1,
+//         completionRate: {
+//           $round: ["$completionRate", 2], // Round to 2 decimal places
+//         },
+//       },
+//     },
+//     // Stage 8: Sort by completion rate (descending)
+//     {
+//       $sort: { completionRate: -1, totalTasks: -1 },
+//     },
+//   ];
+// };
+
+// Task Statistics Pipeline for Assigned, Project, Routine Tasks
 export const getTaskStatisticsPipeline = ({
   currentStartDate,
   currentEndDate,
@@ -394,74 +477,35 @@ export const getTaskStatisticsPipeline = ({
   userId = null,
 }) => {
   return [
-    // Stage 1: Match the target user(s)
+    // Stage 1: Process current period tasks
     {
       $match: {
         department: departmentId,
-        ...(userId && { _id: userId }),
+        createdAt: { $gte: currentStartDate, $lte: currentEndDate },
+        ...(userId && {
+          $or: [
+            { taskType: "AssignedTask", assignedTo: { $in: [userId] } },
+            { taskType: "ProjectTask", createdBy: userId },
+          ],
+        }),
       },
     },
-    // Stage 2: Lookup tasks assigned to the user
     {
-      $lookup: {
-        from: "tasks",
-        let: { userId: "$_id" },
+      $project: {
+        status: 1,
+        day: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
+      },
+    },
+    // Stage 2: Process current period routine tasks
+    {
+      $unionWith: {
+        coll: "routinetasks",
         pipeline: [
           {
             $match: {
-              $expr: {
-                $and: [
-                  { $eq: ["$department", departmentId] },
-                  { $gte: ["$createdAt", currentStartDate] },
-                  { $lte: ["$createdAt", currentEndDate] },
-                  {
-                    $or: [
-                      {
-                        $and: [
-                          { $eq: ["$taskType", "AssignedTask"] },
-                          { $in: ["$$userId", "$assignedTo"] },
-                        ],
-                      },
-                      {
-                        $and: [
-                          { $eq: ["$taskType", "ProjectTask"] },
-                          { $eq: ["$createdBy", "$$userId"] },
-                        ],
-                      },
-                    ],
-                  },
-                ],
-              },
-            },
-          },
-          {
-            $project: {
-              status: 1,
-              day: {
-                $dateToString: { format: "%Y-%m-%d", date: "$createdAt" },
-              },
-            },
-          },
-        ],
-        as: "tasks",
-      },
-    },
-    // Stage 3: Lookup routine tasks performed by the user
-    {
-      $lookup: {
-        from: "routinetasks",
-        let: { userId: "$_id" },
-        pipeline: [
-          {
-            $match: {
-              $expr: {
-                $and: [
-                  { $eq: ["$department", departmentId] },
-                  { $gte: ["$date", currentStartDate] },
-                  { $lte: ["$date", currentEndDate] },
-                  { $eq: ["$performedBy", "$$userId"] },
-                ],
-              },
+              department: departmentId,
+              date: { $gte: currentStartDate, $lte: currentEndDate },
+              ...(userId && { performedBy: userId }),
             },
           },
           { $unwind: "$performedTasks" },
@@ -478,18 +522,9 @@ export const getTaskStatisticsPipeline = ({
             },
           },
         ],
-        as: "routineTasks",
       },
     },
-    // Stage 4: Combine all tasks
-    {
-      $project: {
-        allTasks: { $concatArrays: ["$tasks", "$routineTasks"] },
-      },
-    },
-    { $unwind: "$allTasks" },
-    { $replaceRoot: { newRoot: "$allTasks" } },
-    // Stage 5: Group by status and day
+    // Stage 3: Group by status and day
     {
       $group: {
         _id: {
@@ -499,7 +534,7 @@ export const getTaskStatisticsPipeline = ({
         count: { $sum: 1 },
       },
     },
-    // Stage 6: Group by status for totals
+    // Stage 4: Group by status for totals
     {
       $group: {
         _id: "$_id.status",
@@ -512,126 +547,106 @@ export const getTaskStatisticsPipeline = ({
         last30DaysCount: { $sum: "$count" },
       },
     },
-    // Stage 7: Lookup previous period tasks
+    // Stage 5: Lookup previous period tasks
     {
       $lookup: {
-        from: "users",
+        from: "tasks",
         let: { status: "$_id" },
         pipeline: [
           {
             $match: {
-              department: departmentId,
-              ...(userId && { _id: userId }),
-            },
-          },
-          // Previous tasks lookup
-          {
-            $lookup: {
-              from: "tasks",
-              let: { userId: "$_id" },
-              pipeline: [
-                {
-                  $match: {
-                    $expr: {
-                      $and: [
-                        { $eq: ["$department", departmentId] },
-                        { $gte: ["$createdAt", previousStartDate] },
-                        { $lte: ["$createdAt", previousEndDate] },
-                        { $eq: ["$status", "$$status"] },
+              $expr: {
+                $and: [
+                  { $eq: ["$department", departmentId] },
+                  { $gte: ["$createdAt", previousStartDate] },
+                  { $lte: ["$createdAt", previousEndDate] },
+                  { $eq: ["$status", "$$status"] },
+                  ...(userId
+                    ? [
                         {
                           $or: [
                             {
                               $and: [
                                 { $eq: ["$taskType", "AssignedTask"] },
-                                { $in: ["$$userId", "$assignedTo"] },
+                                { $in: [userId, "$assignedTo"] },
                               ],
                             },
                             {
                               $and: [
                                 { $eq: ["$taskType", "ProjectTask"] },
-                                { $eq: ["$createdBy", "$$userId"] },
+                                { $eq: ["$createdBy", userId] },
                               ],
                             },
                           ],
                         },
-                      ],
-                    },
-                  },
-                },
-                { $count: "count" },
-              ],
-              as: "prevTasks",
-            },
-          },
-          // Previous routine tasks lookup
-          {
-            $lookup: {
-              from: "routinetasks",
-              let: { userId: "$_id" },
-              pipeline: [
-                {
-                  $match: {
-                    $expr: {
-                      $and: [
-                        { $eq: ["$department", departmentId] },
-                        { $gte: ["$date", previousStartDate] },
-                        { $lte: ["$date", previousEndDate] },
-                        { $eq: ["$performedBy", "$$userId"] },
-                        {
-                          $expr: {
-                            $eq: [
-                              {
-                                $cond: [
-                                  "$performedTasks.isCompleted",
-                                  "Completed",
-                                  "To Do",
-                                ],
-                              },
-                              "$$status",
-                            ],
-                          },
-                        },
-                      ],
-                    },
-                  },
-                },
-                { $unwind: "$performedTasks" },
-                {
-                  $match: {
-                    "performedTasks.isCompleted": {
-                      $eq: "$$status" === "Completed",
-                    },
-                  },
-                },
-                { $count: "count" },
-              ],
-              as: "prevRoutine",
-            },
-          },
-          // Combine counts
-          {
-            $project: {
-              prevCount: {
-                $add: [
-                  { $ifNull: [{ $arrayElemAt: ["$prevTasks.count", 0] }, 0] },
-                  { $ifNull: [{ $arrayElemAt: ["$prevRoutine.count", 0] }, 0] },
+                      ]
+                    : []),
                 ],
               },
             },
           },
+          { $count: "count" },
         ],
-        as: "prevData",
+        as: "prevTasks",
       },
     },
-    // Stage 8: Process previous counts
+    // Stage 6: Lookup previous period routine tasks
+    {
+      $lookup: {
+        from: "routinetasks",
+        let: { status: "$_id" },
+        pipeline: [
+          {
+            $match: {
+              $expr: {
+                $and: [
+                  { $eq: ["$department", departmentId] },
+                  { $gte: ["$date", previousStartDate] },
+                  { $lte: ["$date", previousEndDate] },
+                  ...(userId ? [{ $eq: ["$performedBy", userId] }] : []),
+                ],
+              },
+            },
+          },
+          { $unwind: "$performedTasks" },
+          {
+            $match: {
+              $expr: {
+                $eq: [
+                  {
+                    $cond: [
+                      "$performedTasks.isCompleted",
+                      "Completed",
+                      "To Do",
+                    ],
+                  },
+                  "$$status",
+                ],
+              },
+            },
+          },
+          { $count: "count" },
+        ],
+        as: "prevRoutine",
+      },
+    },
+    // Stage 7: Combine previous counts
     {
       $addFields: {
-        previous30DaysCount: {
-          $ifNull: [{ $arrayElemAt: ["$prevData.prevCount", 0] }, 0],
+        prevTasksCount: {
+          $ifNull: [{ $arrayElemAt: ["$prevTasks.count", 0] }, 0],
+        },
+        prevRoutineCount: {
+          $ifNull: [{ $arrayElemAt: ["$prevRoutine.count", 0] }, 0],
         },
       },
     },
-    // Stage 9: Calculate trend
+    {
+      $addFields: {
+        previous30DaysCount: { $add: ["$prevTasksCount", "$prevRoutineCount"] },
+      },
+    },
+    // Stage 8: Calculate trend
     {
       $addFields: {
         trend: {
@@ -718,7 +733,7 @@ export const getTaskStatisticsPipeline = ({
         },
       },
     },
-    // Stage 10: Map daily data to date range
+    // Stage 9: Map daily data to date range
     {
       $addFields: {
         data: {
@@ -748,7 +763,7 @@ export const getTaskStatisticsPipeline = ({
         },
       },
     },
-    // Stage 11: Project final output
+    // Stage 10: Project final output
     {
       $project: {
         _id: 0,
@@ -758,6 +773,9 @@ export const getTaskStatisticsPipeline = ({
         trend: 1,
         trendChange: 1,
         data: 1,
+        // Include for debugging:
+        prevTasksCount: 1,
+        prevRoutineCount: 1,
       },
     },
   ];
@@ -1110,6 +1128,152 @@ export const getLeaderboardPipeline = ({
 };
 
 // Department pipeline for department performance
+// export const getDepartmentPerformancePipeline = ({
+//   departmentId,
+//   currentStartDate,
+//   currentEndDate,
+//   weights = {
+//     AssignedTask: 1.0,
+//     ProjectTask: 1.0,
+//     RoutineTask: 1.0,
+//   },
+// }) => {
+//   // Create weight branches for $switch statements
+//   const weightBranches = [
+//     { case: { $eq: ["$type", "AssignedTask"] }, then: weights.AssignedTask },
+//     { case: { $eq: ["$type", "ProjectTask"] }, then: weights.ProjectTask },
+//     { case: { $eq: ["$type", "RoutineTask"] }, then: weights.RoutineTask },
+//   ];
+
+//   return [
+//     // Process Task collection (AssignedTask + ProjectTask)
+//     {
+//       $match: {
+//         department: departmentId,
+//         createdAt: { $gte: currentStartDate, $lte: currentEndDate },
+//       },
+//     },
+//     {
+//       $project: {
+//         type: "$taskType",
+//         completed: { $cond: [{ $eq: ["$status", "Completed"] }, 1, 0] },
+//         weight: {
+//           $switch: {
+//             branches: weightBranches,
+//             default: 1,
+//           },
+//         },
+//       },
+//     },
+//     // Process RoutineTask collection separately
+//     {
+//       $unionWith: {
+//         coll: "routinetasks",
+//         pipeline: [
+//           {
+//             $match: {
+//               department: departmentId,
+//               date: { $gte: currentStartDate, $lte: currentEndDate },
+//             },
+//           },
+//           { $unwind: "$performedTasks" },
+//           {
+//             $project: {
+//               type: { $literal: "RoutineTask" },
+//               completed: {
+//                 $cond: [{ $eq: ["$performedTasks.isCompleted", true] }, 1, 0],
+//               },
+//               weight: weights.RoutineTask,
+//             },
+//           },
+//         ],
+//       },
+//     },
+//     // Calculate weighted values
+//     {
+//       $addFields: {
+//         weightedTotal: "$weight",
+//         weightedCompleted: { $multiply: ["$completed", "$weight"] },
+//       },
+//     },
+//     // Aggregate by task type
+//     {
+//       $group: {
+//         _id: "$type",
+//         totalTasks: { $sum: 1 },
+//         completedTasks: { $sum: "$completed" },
+//         weightedTotal: { $sum: "$weightedTotal" },
+//         weightedCompleted: { $sum: "$weightedCompleted" },
+//       },
+//     },
+//     // Aggregate overall metrics
+//     {
+//       $group: {
+//         _id: null,
+//         totalTasks: { $sum: "$totalTasks" },
+//         completedTasks: { $sum: "$completedTasks" },
+//         weightedTotal: { $sum: "$weightedTotal" },
+//         weightedCompleted: { $sum: "$weightedCompleted" },
+//         breakdown: { $push: "$$ROOT" },
+//       },
+//     },
+//     // Calculate performance metrics
+//     {
+//       $project: {
+//         _id: 0,
+//         totalTasks: 1,
+//         completedTasks: 1,
+//         incompleteTasks: { $subtract: ["$totalTasks", "$completedTasks"] },
+//         breakdown: 1,
+//         weightedPerformance: {
+//           $cond: [
+//             { $eq: ["$weightedTotal", 0] },
+//             0,
+//             {
+//               $multiply: [
+//                 { $divide: ["$weightedCompleted", "$weightedTotal"] },
+//                 100,
+//               ],
+//             },
+//           ],
+//         },
+//         unweightedPerformance: {
+//           $cond: [
+//             { $eq: ["$totalTasks", 0] },
+//             0,
+//             {
+//               $multiply: [{ $divide: ["$completedTasks", "$totalTasks"] }, 100],
+//             },
+//           ],
+//         },
+//         performanceScore: {
+//           $cond: [
+//             { $eq: ["$weightedTotal", 0] },
+//             {
+//               $cond: [
+//                 { $eq: ["$totalTasks", 0] },
+//                 0,
+//                 {
+//                   $multiply: [
+//                     { $divide: ["$completedTasks", "$totalTasks"] },
+//                     100,
+//                   ],
+//                 },
+//               ],
+//             },
+//             {
+//               $multiply: [
+//                 { $divide: ["$weightedCompleted", "$weightedTotal"] },
+//                 100,
+//               ],
+//             },
+//           ],
+//         },
+//       },
+//     },
+//   ];
+// };
+
 export const getDepartmentPerformancePipeline = ({
   departmentId,
   currentStartDate,
@@ -1120,13 +1284,6 @@ export const getDepartmentPerformancePipeline = ({
     RoutineTask: 0.8,
   },
 }) => {
-  // Create weight branches for $switch statements
-  const weightBranches = [
-    { case: { $eq: ["$type", "AssignedTask"] }, then: weights.AssignedTask },
-    { case: { $eq: ["$type", "ProjectTask"] }, then: weights.ProjectTask },
-    { case: { $eq: ["$type", "RoutineTask"] }, then: weights.RoutineTask },
-  ];
-
   return [
     // Process Task collection (AssignedTask + ProjectTask)
     {
@@ -1141,13 +1298,22 @@ export const getDepartmentPerformancePipeline = ({
         completed: { $cond: [{ $eq: ["$status", "Completed"] }, 1, 0] },
         weight: {
           $switch: {
-            branches: weightBranches,
-            default: 1,
+            branches: [
+              {
+                case: { $eq: ["$taskType", "AssignedTask"] },
+                then: weights.AssignedTask,
+              },
+              {
+                case: { $eq: ["$taskType", "ProjectTask"] },
+                then: weights.ProjectTask,
+              },
+            ],
+            default: weights.RoutineTask,
           },
         },
       },
     },
-    // Process RoutineTask collection separately
+    // Process RoutineTask collection
     {
       $unionWith: {
         coll: "routinetasks",
@@ -1160,12 +1326,17 @@ export const getDepartmentPerformancePipeline = ({
           },
           { $unwind: "$performedTasks" },
           {
+            $addFields: {
+              weight: weights.RoutineTask,
+            },
+          },
+          {
             $project: {
               type: { $literal: "RoutineTask" },
               completed: {
                 $cond: [{ $eq: ["$performedTasks.isCompleted", true] }, 1, 0],
               },
-              weight: weights.RoutineTask,
+              weight: 1,
             },
           },
         ],
@@ -1199,7 +1370,7 @@ export const getDepartmentPerformancePipeline = ({
         breakdown: { $push: "$$ROOT" },
       },
     },
-    // Calculate performance metrics
+    // Calculate performance metrics with rounding
     {
       $project: {
         _id: 0,
@@ -1212,9 +1383,14 @@ export const getDepartmentPerformancePipeline = ({
             { $eq: ["$weightedTotal", 0] },
             0,
             {
-              $multiply: [
-                { $divide: ["$weightedCompleted", "$weightedTotal"] },
-                100,
+              $round: [
+                {
+                  $multiply: [
+                    { $divide: ["$weightedCompleted", "$weightedTotal"] },
+                    100,
+                  ],
+                },
+                2,
               ],
             },
           ],
@@ -1224,7 +1400,15 @@ export const getDepartmentPerformancePipeline = ({
             { $eq: ["$totalTasks", 0] },
             0,
             {
-              $multiply: [{ $divide: ["$completedTasks", "$totalTasks"] }, 100],
+              $round: [
+                {
+                  $multiply: [
+                    { $divide: ["$completedTasks", "$totalTasks"] },
+                    100,
+                  ],
+                },
+                2,
+              ],
             },
           ],
         },
@@ -1236,17 +1420,27 @@ export const getDepartmentPerformancePipeline = ({
                 { $eq: ["$totalTasks", 0] },
                 0,
                 {
-                  $multiply: [
-                    { $divide: ["$completedTasks", "$totalTasks"] },
-                    100,
+                  $round: [
+                    {
+                      $multiply: [
+                        { $divide: ["$completedTasks", "$totalTasks"] },
+                        100,
+                      ],
+                    },
+                    2,
                   ],
                 },
               ],
             },
             {
-              $multiply: [
-                { $divide: ["$weightedCompleted", "$weightedTotal"] },
-                100,
+              $round: [
+                {
+                  $multiply: [
+                    { $divide: ["$weightedCompleted", "$weightedTotal"] },
+                    100,
+                  ],
+                },
+                2,
               ],
             },
           ],
@@ -1255,3 +1449,172 @@ export const getDepartmentPerformancePipeline = ({
     },
   ];
 };
+
+// export const getDepartmentPerformancePipeline = ({
+//   departmentId,
+//   currentStartDate,
+//   currentEndDate,
+//   weights = {
+//     AssignedTask: 1.0,
+//     ProjectTask: 1.5,
+//     RoutineTask: 0.8,
+//   },
+// }) => {
+//   // Create weight branches for $switch statements
+//   const weightBranches = [
+//     { case: { $eq: ["$type", "AssignedTask"] }, then: weights.AssignedTask },
+//     { case: { $eq: ["$type", "ProjectTask"] }, then: weights.ProjectTask },
+//     { case: { $eq: ["$type", "RoutineTask"] }, then: weights.RoutineTask },
+//   ];
+
+//   return [
+//     // Process Task collection (AssignedTask + ProjectTask)
+//     {
+//       $match: {
+//         department: departmentId,
+//         createdAt: { $gte: currentStartDate, $lte: currentEndDate },
+//       },
+//     },
+//     {
+//       $project: {
+//         type: "$taskType",
+//         completed: { $cond: [{ $eq: ["$status", "Completed"] }, 1, 0] },
+//         weight: {
+//           $switch: {
+//             branches: weightBranches,
+//             default: 1,
+//           },
+//         },
+//       },
+//     },
+//     // Process RoutineTask collection separately - FIXED
+//     {
+//       $unionWith: {
+//         coll: "routinetasks",
+//         pipeline: [
+//           {
+//             $match: {
+//               department: departmentId,
+//               date: { $gte: currentStartDate, $lte: currentEndDate },
+//             },
+//           },
+//           // Calculate completion status before unwind
+//           {
+//             $addFields: {
+//               allCompleted: {
+//                 $cond: [
+//                   {
+//                     $gt: [{ $size: "$performedTasks" }, 0],
+//                   },
+//                   {
+//                     $eq: [
+//                       {
+//                         $size: {
+//                           $filter: {
+//                             input: "$performedTasks",
+//                             cond: { $eq: ["$$this.isCompleted", true] },
+//                           },
+//                         },
+//                       },
+//                       { $size: "$performedTasks" },
+//                     ],
+//                   },
+//                   false,
+//                 ],
+//               },
+//             },
+//           },
+//           {
+//             $project: {
+//               type: { $literal: "RoutineTask" },
+//               completed: { $cond: ["$allCompleted", 1, 0] },
+//               weight: weights.RoutineTask,
+//             },
+//           },
+//         ],
+//       },
+//     },
+//     // Calculate weighted values
+//     {
+//       $addFields: {
+//         weightedTotal: "$weight",
+//         weightedCompleted: { $multiply: ["$completed", "$weight"] },
+//       },
+//     },
+//     // Aggregate by task type
+//     {
+//       $group: {
+//         _id: "$type",
+//         totalTasks: { $sum: 1 },
+//         completedTasks: { $sum: "$completed" },
+//         weightedTotal: { $sum: "$weightedTotal" },
+//         weightedCompleted: { $sum: "$weightedCompleted" },
+//       },
+//     },
+//     // Aggregate overall metrics
+//     {
+//       $group: {
+//         _id: null,
+//         totalTasks: { $sum: "$totalTasks" },
+//         completedTasks: { $sum: "$completedTasks" },
+//         weightedTotal: { $sum: "$weightedTotal" },
+//         weightedCompleted: { $sum: "$weightedCompleted" },
+//         breakdown: { $push: "$$ROOT" },
+//       },
+//     },
+//     // Calculate performance metrics
+//     {
+//       $project: {
+//         _id: 0,
+//         totalTasks: 1,
+//         completedTasks: 1,
+//         incompleteTasks: { $subtract: ["$totalTasks", "$completedTasks"] },
+//         breakdown: 1,
+//         weightedPerformance: {
+//           $cond: [
+//             { $eq: ["$weightedTotal", 0] },
+//             0,
+//             {
+//               $multiply: [
+//                 { $divide: ["$weightedCompleted", "$weightedTotal"] },
+//                 100,
+//               ],
+//             },
+//           ],
+//         },
+//         unweightedPerformance: {
+//           $cond: [
+//             { $eq: ["$totalTasks", 0] },
+//             0,
+//             {
+//               $multiply: [{ $divide: ["$completedTasks", "$totalTasks"] }, 100],
+//             },
+//           ],
+//         },
+//         performanceScore: {
+//           $cond: [
+//             { $eq: ["$weightedTotal", 0] },
+//             {
+//               $cond: [
+//                 { $eq: ["$totalTasks", 0] },
+//                 0,
+//                 {
+//                   $multiply: [
+//                     { $divide: ["$completedTasks", "$totalTasks"] },
+//                     100,
+//                   ],
+//                 },
+//               ],
+//             },
+//             {
+//               $multiply: [
+//                 { $divide: ["$weightedCompleted", "$weightedTotal"] },
+//                 100,
+//               ],
+//             },
+//           ],
+//         },
+//       },
+//     },
+//   ];
+// };

@@ -3,11 +3,13 @@ import { apiSlice } from "./apiSlice";
 export const statisticsApiSlice = apiSlice.injectEndpoints({
   endpoints: (builder) => ({
     getStatistics: builder.query({
-      query: ({ departmentId, currentDate, limit }) => ({
+      query: ({ departmentId, currentDate }) => ({
         url: `/statistics/department/${departmentId}/dashboard`,
-        params: { currentDate, limit },
+        params: { currentDate },
       }),
-      providesTags: ["Dashboard"],
+      providesTags: (result, error, { departmentId }) => [
+        { type: "Statistics", id: `DEPARTMENT-${departmentId}` },
+      ],
     }),
   }),
 });

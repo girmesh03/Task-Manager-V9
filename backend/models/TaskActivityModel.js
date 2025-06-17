@@ -127,10 +127,11 @@ taskActivitySchema.pre("save", async function (next) {
       );
     }
 
+    // Replace validTransitions with:
     const validTransitions = {
       "To Do": ["In Progress", "Pending"],
-      "In Progress": ["Completed", "Pending"],
-      Completed: ["Pending"],
+      "In Progress": ["In Progress", "Completed", "Pending"],
+      Completed: ["Pending", "In Progress"],
       Pending: ["In Progress", "Completed"],
     };
 

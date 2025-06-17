@@ -23,14 +23,12 @@ const Dashboard = () => {
     {
       departmentId,
       currentDate: dayjs().format("YYYY-MM-DD"),
-      limit: 5,
     }
   );
 
   const {
     taskStatistics = [],
     sixMonthStatistics = {},
-    // leaderboardStatistics = [],
     performanceChartData = {},
     daysInLast30,
   } = data || {};

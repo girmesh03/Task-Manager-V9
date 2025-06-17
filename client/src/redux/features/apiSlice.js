@@ -1,4 +1,3 @@
-// apiSlice.js
 import { createApi, fetchBaseQuery } from "@reduxjs/toolkit/query/react";
 import { setLogout, selectTokenVersion } from "./authSlice";
 import { toast } from "react-toastify";
@@ -48,17 +47,6 @@ const baseQueryWithReauth = async (args, api, extraOptions) => {
     }
   }
 
-  // Handle other errors
-  // if (result?.error) {
-  //   const errorMessage = result.error.data?.message || "Operation failed";
-  //   if (![401, 498].includes(result.error.status)) {
-  //     toast.error(errorMessage, {
-  //       position: "bottom-right",
-  //       autoClose: 5000,
-  //     });
-  //   }
-  // }
-
   return result;
 };
 
@@ -66,16 +54,15 @@ export const apiSlice = createApi({
   reducerPath: "appApi",
   baseQuery: baseQueryWithReauth,
   tagTypes: [
-    "Dashboard",
-    "Tasks",
-    "RoutineTasks",
-    "Users",
-    "Departments",
-    "Notifications",
-    "Activities",
+    "Department",
     "Statistics",
-    "Reports",
-    "UserStats",
+    "User",
+    "Task",
+    "RoutineTask",
+    "Activity",
+    "Report",
+    "UserStat",
+    "Notification",
   ],
   endpoints: () => ({}),
 });

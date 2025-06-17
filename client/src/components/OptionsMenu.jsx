@@ -1,41 +1,36 @@
-// react
-import React, { memo, useState } from "react";
-import { Link, useNavigate } from "react-router";
+import { memo, useState } from "react";
+import { useNavigate } from "react-router";
 import { toast } from "react-toastify";
 
-// mui
 import { styled } from "@mui/material/styles";
-import Divider, { dividerClasses } from "@mui/material/Divider";
+import Box from "@mui/material/Box";
 import Menu from "@mui/material/Menu";
+import IconButton from "@mui/material/IconButton";
 import ListItemText from "@mui/material/ListItemText";
 import MuiMenuItem from "@mui/material/MenuItem";
+import Divider, { dividerClasses } from "@mui/material/Divider";
 import { paperClasses } from "@mui/material/Paper";
 import { listClasses } from "@mui/material/List";
 import ListItemIcon, { listItemIconClasses } from "@mui/material/ListItemIcon";
 
-// mui icon
 import LogoutRoundedIcon from "@mui/icons-material/LogoutRounded";
 import MoreVertRoundedIcon from "@mui/icons-material/MoreVertRounded";
 
-// redux
-import { useDispatch } from "react-redux";
-import { setLogout } from "../redux/features/authSlice";
+import { useDispatch, useSelector } from "react-redux";
+import {
+  selectSelectedDepartmentId,
+  setLogout,
+} from "../redux/features/authSlice";
 
-// hooks
 import useAuth from "../hooks/useAuth";
 
-// components
-import MenuButton from "./MenuButton";
-
-// styled components
 const MenuItem = styled(MuiMenuItem)({
   margin: "2px 0",
 });
 
 const OptionsMenu = memo(() => {
-  // console.log("OptionsMenu");
-  // const { currentUserId, isAdminOrSuperAdmin } = useAuth();
-  const { currentUserId } = useAuth();
+  const { currentUserId, currentUserDepartmentId } = useAuth();
+  const departmentId = useSelector(selectSelectedDepartmentId);
   const dispatch = useDispatch();
   const navigate = useNavigate();
 
@@ -52,10 +47,9 @@ const OptionsMenu = memo(() => {
 
   const handleLogout = async () => {
     try {
-      const response = await dispatch(setLogout()).unwrap();
-      // console.log("handleLogout", response);
+      const { message } = await dispatch(setLogout()).unwrap();
       navigate("/", { replace: true });
-      toast.success(response.message);
+      toast.success(message);
     } catch (error) {
       toast.error(error.message || "An error occurred");
     } finally {
@@ -63,23 +57,34 @@ const OptionsMenu = memo(() => {
     }
   };
 
+  const handleNavigation = (path) => {
+    setAnchorEl(null);
+    navigate(`/users/${currentUserId}/${path}`, { replace: true });
+  };
+
   return (
-    <React.Fragment>
-      <MenuButton
-        aria-label="Open-menu"
+    <>
+      <IconButton
+        size="small"
+        aria-label={`${currentUserId}-option-menu`}
+        color="inherit"
         onClick={handleClick}
-        sx={{ borderColor: "transparent" }}
+        aria-controls={open ? "options-menu" : undefined}
+        aria-haspopup="true"
+        aria-expanded={open ? "true" : undefined}
+        disabled={
+          departmentId?.toString() !== currentUserDepartmentId?.toString()
+        }
       >
         <MoreVertRoundedIcon />
-      </MenuButton>
+      </IconButton>
       <Menu
+        id="options-menu"
         anchorEl={anchorEl}
-        id="menu"
         open={open}
         onClose={handleClose}
-        onClick={handleClose}
-        transformOrigin={{ horizontal: "right", vertical: "top" }}
-        anchorOrigin={{ horizontal: "right", vertical: "bottom" }}
+        anchorOrigin={{ horizontal: "right", vertical: "top" }}
+        transformOrigin={{ horizontal: "right", vertical: "bottom" }}
         sx={{
           [`& .${listClasses.root}`]: {
             padding: "4px",
@@ -87,30 +92,17 @@ const OptionsMenu = memo(() => {
           [`& .${paperClasses.root}`]: {
             padding: 0,
             minWidth: "150px",
+            mb: "80px",
           },
           [`& .${dividerClasses.root}`]: {
             margin: "4px -4px",
           },
         }}
       >
-        <MenuItem
-          component={Link}
-          to={`/users/${currentUserId}/profile`}
-          onClick={handleClose}
-        >
-          Profile
-        </MenuItem>
+        <MenuItem onClick={() => handleNavigation("profile")}>Profile</MenuItem>
         <Divider />
-        <MenuItem
-          component={Link}
-          to={`/users/${currentUserId}/account`}
-          onClick={handleClose}
-          // disabled={!isAdminOrSuperAdmin}
-        >
-          Account
-        </MenuItem>
+        <MenuItem onClick={() => handleNavigation("account")}>Account</MenuItem>
         <Divider />
-
         <MenuItem
           onClick={handleLogout}
           sx={{
@@ -126,7 +118,7 @@ const OptionsMenu = memo(() => {
           </ListItemIcon>
         </MenuItem>
       </Menu>
-    </React.Fragment>
+    </>
   );
 });
 

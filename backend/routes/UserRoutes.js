@@ -11,6 +11,14 @@ import {
 } from "../controllers/UserController.js";
 
 import {
+  updateMyDetails,
+  changeMyPassword,
+  initiateEmailChange,
+  verifyEmailChange,
+  updateMyProfilePicture,
+} from "../controllers/AccountController.js";
+
+import {
   verifyJWT,
   authorizeRoles,
   verifyDepartmentAccess,
@@ -76,5 +84,12 @@ router.get(
   verifyDepartmentAccess,
   getUsersStatistics
 );
+
+// User account management routes
+router.put("/:userId/details", updateMyDetails);
+router.put("/:userId/password", changeMyPassword);
+router.put("/:userId/profile-picture", updateMyProfilePicture);
+router.post("/:userId/initiate-email-change", initiateEmailChange);
+router.post("/:userId/verify-email-change", verifyEmailChange);
 
 export default router;

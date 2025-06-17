@@ -72,6 +72,11 @@ const authSlice = createSlice({
     incrementTokenVersion: (state) => {
       state.tokenVersion += 1;
     },
+    setProfilePicture: (state, action) => {
+      if (state.currentUser) {
+        state.currentUser.profilePicture = action.payload;
+      }
+    },
   },
   extraReducers: (builder) => {
     builder
@@ -118,7 +123,10 @@ export const selectIsLoading = (state) => state.auth.isLoading;
 export const selectError = (state) => state.auth.error;
 export const selectTokenVersion = (state) => state.auth.tokenVersion;
 
-export const { setSelectedDepartmentId, incrementTokenVersion } =
-  authSlice.actions;
+export const {
+  setSelectedDepartmentId,
+  incrementTokenVersion,
+  setProfilePicture,
+} = authSlice.actions;
 
 export default authSlice.reducer;

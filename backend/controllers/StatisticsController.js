@@ -1,12 +1,10 @@
 import asyncHandler from "express-async-handler";
 import CustomError from "../errorHandler/CustomError.js";
 import Department from "../models/DepartmentModel.js";
-import User from "../models/UserModel.js";
 import Task from "../models/TaskModel.js";
 
 import {
   getSixMonthStatsPipeline,
-  getLeaderboardPipeline,
   getDepartmentPerformancePipeline,
   getTaskStatisticsPipeline,
 } from "../pipelines/Dashboard.js";
@@ -41,9 +39,7 @@ const generateTaskStatsOutput = (stats, statuses, interval) => {
 // @access  Private (Handled by middleware)
 const getDashboardStats = asyncHandler(async (req, res, next) => {
   const { departmentId } = req.params;
-  const { currentDate, limit } = req.query;
-
-  const leadersLimit = limit ? parseInt(limit) : 10;
+  const { currentDate } = req.query;
 
   // Get Department
   const department = await Department.findById(departmentId);
@@ -74,8 +70,8 @@ const getDashboardStats = asyncHandler(async (req, res, next) => {
   } = dates;
 
   try {
-    // 1. Assigned Task Statistics
-    const getTaskStatistics = await User.aggregate(
+    // Last 30 days Task Statistics for Assigned, Project, Routine tasks
+    const getTaskStatistics = await Task.aggregate(
       getTaskStatisticsPipeline({
         currentEndDate: today,
         currentStartDate: last30DaysStart,
@@ -86,19 +82,19 @@ const getDashboardStats = asyncHandler(async (req, res, next) => {
       })
     );
 
-    // 2. Prepare interval
+    // Prepare interval
     const interval = `${daysInLast30[0]} - ${
       daysInLast30[daysInLast30.length - 1]
     }`;
 
-    // 3. Format task statistics
+    // Format task statistics
     const formattedTaskStats = generateTaskStatsOutput(
       getTaskStatistics,
       ["Completed", "In Progress", "Pending", "To Do"],
       interval
     );
 
-    // 4. Get six month statistics for barchart
+    // Get six month statistics for barchart
     const [sixMonthStats] = await Task.aggregate(
       getSixMonthStatsPipeline({
         sixMonthsAgo,
@@ -141,17 +137,7 @@ const getDashboardStats = asyncHandler(async (req, res, next) => {
       departmentPerformance.interval = interval;
     }
 
-    // 6. Leaderboard Statistics
-    const leaderboardStats = await User.aggregate(
-      getLeaderboardPipeline({
-        currentStartDate: last30DaysStart,
-        currentEndDate: today,
-        departmentId: department._id,
-        limit: leadersLimit,
-      })
-    );
-
-    // 7. Return response
+    // Return response
     res.status(200).json({
       taskStatistics: formattedTaskStats,
       sixMonthStatistics: sixMonthStats || {
@@ -159,7 +145,7 @@ const getDashboardStats = asyncHandler(async (req, res, next) => {
         lastSixMonths,
         interval,
       },
-      leaderboardStatistics: leaderboardStats,
+      // leaderboardStatistics: leaderboardStats,
       daysInLast30,
       performanceChartData: departmentPerformance || {
         totalTasks: 0,
