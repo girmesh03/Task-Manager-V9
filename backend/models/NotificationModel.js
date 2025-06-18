@@ -28,33 +28,13 @@ const notificationSchema = new mongoose.Schema(
       required: [true, "Notification type is required"],
       index: true,
     },
-    task: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Task",
-    },
-    department: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Department",
-      index: true,
-    },
     linkedDocument: {
       type: mongoose.Schema.Types.ObjectId,
       refPath: "linkedDocumentType",
-      required: function () {
-        return ["TaskAssignment", "TaskUpdate"].includes(this.type);
-      },
     },
     linkedDocumentType: {
       type: String,
       enum: ["Task", "User", "Department", "TaskActivity", "RoutineTask"],
-      required: function () {
-        return !!this.linkedDocument;
-      },
-    },
-    priority: {
-      type: String,
-      enum: ["Low", "Medium", "High"],
-      default: "Medium",
     },
     isRead: {
       type: Boolean,
@@ -84,12 +64,11 @@ const notificationSchema = new mongoose.Schema(
   }
 );
 
-// ===================== Indexes =====================
+// Indexes
 notificationSchema.index({ user: 1, isRead: 1 });
-notificationSchema.index({ createdAt: 1 }, { expireAfterSeconds: 2592000 }); // 30 days
-notificationSchema.index({ linkedDocumentType: 1 });
+notificationSchema.index({ createdAt: 1 }, { expireAfterSeconds: 2592000 }); // 30 days TTL
 
-// ===================== Paginate =====================
+// Plugins
 notificationSchema.plugin(mongoosePaginate);
 
 const Notification = mongoose.model("Notification", notificationSchema);

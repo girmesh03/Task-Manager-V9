@@ -1,38 +1,27 @@
 import mongoose from "mongoose";
 import mongoosePaginate from "mongoose-paginate-v2";
-import Notification from "./NotificationModel.js";
-import TaskActivity from "./TaskActivityModel.js";
-import Task from "./TaskModel.js";
-import RoutineTask from "./RoutineTaskModel.js";
-import User from "./UserModel.js";
-import CustomError from "../errorHandler/CustomError.js";
-
 import { getFormattedDate } from "../utils/GetDateIntervals.js";
-import { deleteFromCloudinary } from "../utils/cloudinaryHelper.js";
+import CustomError from "../errorHandler/CustomError.js";
 
 const departmentSchema = new mongoose.Schema(
   {
     name: {
       type: String,
       required: [true, "Department name is required"],
-      unique: true,
+      // unique: true,
       trim: true,
       minlength: [2, "Department name must be at least 2 characters"],
-      set: function (value) {
-        return value
-          .toLowerCase()
-          .replace(/\b\w/g, (char) => char.toUpperCase());
-      },
+      set: (value) =>
+        value.toLowerCase().replace(/\b\w/g, (char) => char.toUpperCase()),
     },
     description: {
       type: String,
       trim: true,
       maxlength: [300, "Description cannot exceed 300 characters"],
-      set: function (value) {
-        return value
+      set: (value) =>
+        value
           .toLowerCase()
-          .replace(/(^\w|\.\s*\w)/g, (match) => match.toUpperCase());
-      },
+          .replace(/(^\w|\.\s*\w)/g, (match) => match.toUpperCase()),
     },
     managers: {
       type: [
@@ -41,9 +30,9 @@ const departmentSchema = new mongoose.Schema(
           ref: "User",
           validate: {
             validator: async function (userId) {
-              const user = await mongoose.model("User").findById(userId);
+              const user = await mongoose.model("User").findById(userId).lean();
               return (
-                user?.department?.equals(this._id) &&
+                user?.department?.toString() === this._id.toString() &&
                 ["Manager", "Admin", "SuperAdmin"].includes(user.role)
               );
             },
@@ -78,10 +67,14 @@ const departmentSchema = new mongoose.Schema(
   }
 );
 
-// ===================== Indexes =====================
+// Indexes
 departmentSchema.index({ managers: 1 });
+departmentSchema.index(
+  { name: 1 },
+  { collation: { locale: "en", strength: 2 } }
+);
 
-// ===================== Virtuals =====================
+// Virtuals
 departmentSchema.virtual("memberCount", {
   ref: "User",
   localField: "_id",
@@ -89,109 +82,48 @@ departmentSchema.virtual("memberCount", {
   count: true,
 });
 
-// ===================== Plugins =====================
+// Plugins
 departmentSchema.plugin(mongoosePaginate);
 
-// ===================== Middleware Updates =====================
-departmentSchema.pre(
-  "deleteOne",
-  { document: true, query: false },
-  async function (next) {
-    const currentUser = this.$currentUser; // Requires passing user context via document
-    if (!currentUser || currentUser.role !== "SuperAdmin") {
-      return next(
-        new CustomError("Only SuperAdmin can delete departments", 403)
-      );
+// Pre-delete Hook
+departmentSchema.pre("deleteOne", { document: true }, async function (next) {
+  const session = this.$session();
+  const departmentId = this._id;
+
+  try {
+    // Delete users and their dependencies
+    const users = await mongoose
+      .model("User")
+      .find({ department: departmentId })
+      .session(session);
+
+    for (const user of users) {
+      await user.deleteOne({ session });
     }
+
+    // Delete tasks
+    await mongoose
+      .model("Task")
+      .deleteMany({ department: departmentId })
+      .session(session);
+
+    // Delete routine tasks
+    await mongoose
+      .model("RoutineTask")
+      .deleteMany({ department: departmentId })
+      .session(session);
+
+    // Delete notifications
+    await mongoose
+      .model("Notification")
+      .deleteMany({ department: departmentId })
+      .session(session);
+
     next();
+  } catch (err) {
+    next(new CustomError("Department deletion failed", 500, "DEPT-500"));
   }
-);
-
-// departmentSchema.pre(
-//   "deleteOne",
-//   { document: true, query: false },
-//   async function (next) {
-//     const session = this.$session();
-//     const departmentId = this._id;
-
-//     try {
-//       // Delete all department-related data
-//       await Promise.all([
-//         Notification.deleteMany({ department: departmentId }).session(session),
-//         TaskActivity.deleteMany({ department: departmentId }).session(session),
-//         Task.deleteMany({ department: departmentId }).session(session),
-//         RoutineTask.deleteMany({ department: departmentId }).session(session),
-//         User.deleteMany({ department: departmentId }).session(session),
-//       ]);
-
-//       // Delete notifications referencing department-linked documents
-//       await Notification.deleteMany({
-//         "linkedDocument.department": departmentId,
-//       }).session(session);
-
-//       next();
-//     } catch (err) {
-//       next(err);
-//     }
-//   }
-// );
-
-// ===================== Static Methods =====================
-
-departmentSchema.pre(
-  "deleteOne",
-  { document: true, query: false },
-  async function (next) {
-    const session = this.$session();
-    const departmentId = this._id;
-
-    try {
-      // Find all related documents to trigger their individual 'deleteOne' hooks
-      const users = await User.find({ department: departmentId }).session(
-        session
-      );
-      for (const user of users) {
-        await user.deleteOne({ session });
-      }
-
-      const tasks = await Task.find({ department: departmentId }).session(
-        session
-      );
-      for (const task of tasks) {
-        await task.deleteOne({ session });
-      }
-
-      const routineTasks = await RoutineTask.find({
-        department: departmentId,
-      }).session(session);
-      for (const task of routineTasks) {
-        await task.deleteOne({ session }); // Assuming RoutineTask has its own hooks
-      }
-
-      // Delete notifications (deleteMany is fine here as they don't have Cloudinary assets)
-      await Notification.deleteMany({
-        $or: [
-          { department: departmentId },
-          { "linkedDocument.department": departmentId },
-        ],
-      }).session(session);
-
-      next();
-    } catch (err) {
-      next(err);
-    }
-  }
-);
-
-// ===================== Static Methods =====================
-departmentSchema.statics.findByManager = function (managerId) {
-  return this.find({ managers: managerId })
-    .populate(
-      "managers",
-      "firstName lastName email role position profilePicture"
-    )
-    .lean();
-};
+});
 
 const Department = mongoose.model("Department", departmentSchema);
 
