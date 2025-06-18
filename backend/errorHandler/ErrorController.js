@@ -1,65 +1,70 @@
-// backend/errorHandler/ErrorController.js
 import CustomError from "./CustomError.js";
-
-const castErrorHandler = (error) => {
-  let model = error.message.split(" ").pop();
-  model = model.substring(1, model.length - 1);
-  model = model.charAt(0).toUpperCase() + model.slice(1);
-  const message = `Invalid ${model} id`;
-  return new CustomError(message, 400);
-};
-
-const duplicateFieldsHandler = (error) => {
-  const name = error.keyValue.name;
-  const message = `${name} already exist`;
-  return new CustomError(message, 400);
-};
-
-const validationErrorHandler = (err) => {
-  const errors = Object.values(err.errors).map((obj) => obj.message);
-  const errorMessage = errors.join(". ");
-  const message = `${errorMessage}`;
-  return new CustomError(message, 400);
-};
 
 const handleSpecificErrors = (error) => {
   if (error.name === "CastError") {
-    return castErrorHandler(error);
+    return new CustomError(`Invalid ${error.kind} id`, 400, "RESOURCE-400");
   } else if (error.code === 11000) {
-    return duplicateFieldsHandler(error);
+    const key = Object.keys(error.keyValue)[0];
+    return new CustomError(`${key} already exists`, 400, "DUPLICATE-400");
   } else if (error.name === "ValidationError") {
-    return validationErrorHandler(error);
+    const errors = Object.values(error.errors).map((err) => ({
+      field: err.path,
+      message: err.message,
+    }));
+    const customError = new CustomError(
+      "Validation failed",
+      400,
+      "VALIDATION-400"
+    );
+    customError.details = errors;
+    return customError;
+  } else if (error.name === "JsonWebTokenError") {
+    return new CustomError("Invalid authentication token", 401, "AUTH-401");
+  } else if (error.name === "TokenExpiredError") {
+    return new CustomError("Authentication token expired", 401, "AUTH-401");
   }
-  return error; // Return original error if not handled
+  return error;
 };
 
 const globalErrorHandler = (error, req, res, next) => {
   error.statusCode = error.statusCode || 500;
   error.status = error.status || "error";
 
-  // Handle specific errors first
   const handledError = handleSpecificErrors(error);
 
-  // Set response based on environment
+  // Log all errors in development
   if (process.env.NODE_ENV === "development") {
-    res.status(handledError.statusCode).json({
-      status: handledError.status,
-      message: handledError.message,
-      stack: error.stack,
-      error,
+    console.error(`[${handledError.timestamp}] ${handledError.message}`, {
+      url: req.originalUrl,
+      method: req.method,
+      stack: handledError.stack,
     });
-  } else if (process.env.NODE_ENV === "production") {
+  }
+
+  // Production error response
+  if (process.env.NODE_ENV === "production") {
     if (handledError.isOperational) {
       res.status(handledError.statusCode).json({
         status: handledError.status,
         message: handledError.message,
+        ...(handledError.details && { details: handledError.details }),
+        errorCode: handledError.errorCode,
       });
     } else {
       res.status(500).json({
         status: "error",
-        message: "Something went wrong!",
+        message: "Internal server error",
+        errorCode: "SERVER-500",
       });
     }
+  } else {
+    // Development error response
+    res.status(handledError.statusCode).json({
+      status: handledError.status,
+      message: handledError.message,
+      error: handledError,
+      stack: handledError.stack,
+    });
   }
 };
 

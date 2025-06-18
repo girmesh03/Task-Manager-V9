@@ -1,38 +1,56 @@
 import { io } from "../server.js";
 import User from "../models/UserModel.js";
+import CustomError from "../errorHandler/CustomError.js";
+
+const getSocketRoom = (roomId) => `room:${roomId}`;
 
 export const emitToUser = (userId, event, data) => {
-  if (!io) return false;
-  io.to(userId.toString()).emit(event, data);
-  return true;
+  if (!io || !userId) return false;
+
+  try {
+    io.to(getSocketRoom(userId.toString())).emit(event, data);
+    return true;
+  } catch (error) {
+    console.error(`Emit to user ${userId} failed:`, error);
+    return false;
+  }
 };
 
 export const emitToManagers = async (departmentId, event, data) => {
   if (!io) return false;
 
-  const managers = await User.find({
-    department: departmentId,
-    role: { $in: ["Manager", "Admin", "SuperAdmin"] },
-  }).lean();
+  try {
+    const managerSockets = await User.aggregate([
+      {
+        $match: {
+          department: departmentId,
+          role: { $in: ["Manager", "Admin", "SuperAdmin"] },
+        },
+      },
+      {
+        $project: { socketRoom: { $concat: ["room:", { $toString: "$_id" }] } },
+      },
+    ]);
 
-  managers.forEach((user) => {
-    io.to(user._id.toString()).emit(event, data);
-  });
+    managerSockets.forEach(({ socketRoom }) => {
+      io.to(socketRoom).emit(event, data);
+    });
 
-  return true;
-};
-
-// Emit to all department members
-export const emitToDepartment = async (departmentId, event, data) => {
-  if (!io) {
-    console.error("Socket.IO not initialized");
+    return true;
+  } catch (error) {
+    console.error("Emit to managers failed:", error);
     return false;
   }
+};
 
-  const users = await User.find({ department: departmentId }).lean();
-  users.forEach((user) => {
-    io.to(user._id.toString()).emit(event, data);
-  });
+export const emitToDepartment = (departmentId, event, data) => {
+  if (!io) return false;
 
-  return true;
+  try {
+    io.to(getSocketRoom(`dept:${departmentId}`)).emit(event, data);
+    return true;
+  } catch (error) {
+    console.error(`Emit to department ${departmentId} failed:`, error);
+    return false;
+  }
 };

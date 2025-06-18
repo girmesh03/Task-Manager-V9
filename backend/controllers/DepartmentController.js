@@ -88,10 +88,10 @@ const createDepartment = asyncHandler(async (req, res, next) => {
         })
       );
 
-      emitToUser(user._id, "role-update", {
-        message: `You've been made manager of ${createdDepartment.name}`,
-        departmentId: createdDepartment._id,
-      });
+      // emitToUser(user._id, "role-update", {
+      //   message: `You've been made manager of ${createdDepartment.name}`,
+      //   departmentId: createdDepartment._id,
+      // });
     }
 
     // Commit transaction
@@ -188,10 +188,11 @@ const getAllDepartments = asyncHandler(async (req, res, next) => {
   // Filter departments based on user role
   let departments = await Department.aggregate(aggregationPipeline);
 
+  // Filter departments based on user role
   const adminRoles = ["SuperAdmin", "Admin"];
   departments = adminRoles.includes(requestor.role)
     ? departments
-    : departments.filter((dept) => dept._id.equals(requestor.departmentId));
+    : departments.filter((dept) => dept._id.equals(requestor.department._id));
 
   // Count total documents based on user role
   const totalCount = adminRoles.includes(requestor.role)

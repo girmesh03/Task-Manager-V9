@@ -6,6 +6,7 @@ const corsOptions = {
     if (allowedOrigins.indexOf(origin) !== -1 || !origin) {
       callback(null, true);
     } else {
+      console.warn(`CORS violation attempt from: ${origin}.`);
       callback(new Error("Not allowed by CORS"));
     }
   },
@@ -19,6 +20,7 @@ export const corsSocketOptions = {
     if (allowedOrigins.indexOf(origin) !== -1 || !origin) {
       callback(null, true);
     } else {
+      console.warn(`Socket.IO CORS violation attempt from: ${origin}.`);
       callback(new Error("Not allowed by CORS"));
     }
   },

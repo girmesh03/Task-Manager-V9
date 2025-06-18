@@ -1,15 +1,26 @@
 import rateLimit from "express-rate-limit";
 
 const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // Limit each IP to 100 requests per window
-  standardHeaders: true, // Return rate limit info in headers
-  legacyHeaders: false, // Disable legacy headers
+  windowMs: 15 * 60 * 1000,
+  max: (req, res) => {
+    // Allow more requests for admins
+    return req.user?.role === "Admin" ? 500 : 100;
+  },
   message: {
     success: false,
-    message: "Too many requests from this IP, please try again later",
+    message: "Too many requests, please try again later",
+    errorCode: "RATE_LIMIT-429",
   },
-  skip: (req) => process.env.NODE_ENV === "development", // Disable during development
+  skip: (req) => {
+    // Skip in development or for internal IPs
+    return (
+      process.env.NODE_ENV === "development" ||
+      req.ip.startsWith("192.168.") ||
+      req.ip === "::1"
+    );
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
 });
 
 export default authLimiter;
