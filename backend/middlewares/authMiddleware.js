@@ -1,92 +1,97 @@
 import mongoose from "mongoose";
 import jwt from "jsonwebtoken";
-import Department from "../models/DepartmentModel.js";
 import User from "../models/UserModel.js";
 import CustomError from "../errorHandler/CustomError.js";
+
+const ROLE_HIERARCHY = {
+  User: 1,
+  Manager: 2,
+  Admin: 3,
+  SuperAdmin: 4,
+};
 
 export const verifyJWT = (req, res, next) => {
   const token = req.cookies.access_token;
 
   if (!token) {
-    return next(new CustomError("Unauthorized: No token provided", 401));
+    return next(
+      new CustomError("Unauthorized: No token provided", 401, "AUTH-401")
+    );
   }
 
   jwt.verify(token, process.env.JWT_ACCESS_SECRET, async (err, decoded) => {
     if (err) {
-      return next(
-        new CustomError("Unauthorized: Invalid or expired token", 401)
-      );
+      const errorType =
+        err.name === "TokenExpiredError"
+          ? new CustomError("Token expired", 401, "AUTH-401")
+          : new CustomError("Invalid token", 401, "AUTH-401");
+      return next(errorType);
     }
 
     try {
-      // Ensure the user still exists
       const user = await User.findById(decoded._id);
       if (!user) {
-        return next(new CustomError("Unauthorized: User not found", 401));
+        return next(new CustomError("User not found", 404, "USER-404"));
       }
 
-      // Check if user is not verified and not active
-      if (!user.isVerified && !user.isActive) {
+      if (!user.isVerified || !user.isActive) {
         return next(
           new CustomError(
-            "Unauthorized: User is not verified and not active",
-            403
+            "Account not verified or inactive",
+            403,
+            "ACCOUNT-403"
           )
         );
       }
 
-      req.user = decoded; // Attach decoded token (no extra user data)
-
+      req.user = {
+        _id: user._id,
+        role: user.role,
+        department: user.department,
+      };
       next();
     } catch (error) {
-      return next(new CustomError("Internal Server Error", 500));
+      next(new CustomError("Authentication failed", 500, "AUTH-500"));
     }
   });
 };
 
-export const authorizeRoles = (...role) => {
+export const authorizeRoles = (...requiredRoles) => {
   return (req, res, next) => {
-    if (!role.includes(req.user.role)) {
-      const error = new CustomError(
-        "You are not authorized to perform this action",
-        403
+    const userRoleLevel = ROLE_HIERARCHY[req.user.role];
+    const requiredLevel = Math.max(
+      ...requiredRoles.map((role) => ROLE_HIERARCHY[role])
+    );
+
+    if (userRoleLevel < requiredLevel) {
+      return next(
+        new CustomError("Insufficient permissions", 403, "PERMISSION-403")
       );
-      next(error);
     }
     next();
   };
 };
 
 export const verifyDepartmentAccess = async (req, res, next) => {
-  const session = await mongoose.startSession();
   try {
-    session.startTransaction();
-
     const { departmentId } = req.params;
     const userId = req.user._id;
 
-    // Validate user and department, even superAdmin and Admin
-    const user = await User.findById(userId).session(session);
-    if (!user) throw new CustomError("User not found", 404);
-
     // SuperAdmin bypass
-    if (user.role === "SuperAdmin") {
-      await session.commitTransaction();
-      return next();
+    if (req.user.role === "SuperAdmin") return next();
+
+    // Validate department ID format
+    if (!mongoose.Types.ObjectId.isValid(departmentId)) {
+      throw new CustomError("Invalid department ID", 400, "DEPT-400");
     }
 
-    const department = await Department.findById(departmentId).session(session);
-    if (!department) throw new CustomError("Department not found", 404);
-    if (!user?.department.equals(departmentId)) {
-      throw new CustomError("Department access denied", 403);
+    // Check user-department association
+    const user = await User.findById(userId).select("department");
+    if (!user.department.equals(departmentId)) {
+      throw new CustomError("Department access denied", 403, "DEPT-403");
     }
-
-    await session.commitTransaction();
     next();
   } catch (error) {
-    await session.abortTransaction();
     next(error);
-  } finally {
-    session.endSession();
   }
 };

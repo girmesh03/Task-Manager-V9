@@ -4,58 +4,77 @@ dotenv.config();
 import jwt from "jsonwebtoken";
 import User from "./models/UserModel.js";
 import { Server as SocketIOServer } from "socket.io";
+import CustomError from "./errorHandler/CustomError.js";
 
 const getAccessToken = (cookieHeader) => {
   if (!cookieHeader) return null;
-  const cookies = cookieHeader.split(";");
-  const tokenCookie = cookies.find((c) => c.trim().startsWith("access_token="));
-  return tokenCookie ? tokenCookie.split("=")[1].trim() : null;
+  return cookieHeader
+    .split(";")
+    .find((c) => c.trim().startsWith("access_token="))
+    ?.split("=")[1]
+    ?.trim();
 };
 
-const setupSocketIO = (server, corsSocketOptions) => {
+const authenticateSocket = async (socket, next) => {
+  try {
+    const token = getAccessToken(socket.handshake.headers.cookie);
+    if (!token) throw new CustomError("Missing access token", 401, "AUTH-401");
+
+    const decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET);
+    const user = await User.findById(decoded._id).select(
+      "+isActive +isVerified"
+    );
+
+    if (!user) throw new CustomError("User not found", 404, "USER-404");
+    if (!user.isVerified || !user.isActive) {
+      throw new CustomError("Account not active", 403, "ACCOUNT-403");
+    }
+    if (decoded.tokenVersion !== user.tokenVersion) {
+      throw new CustomError("Token expired", 401, "AUTH-401");
+    }
+
+    socket.user = {
+      _id: user._id,
+      role: user.role,
+      department: user.department,
+    };
+
+    next();
+  } catch (error) {
+    console.error("Socket authentication failed:", error.message);
+    next(new Error("Authentication failed"));
+  }
+};
+
+const setupSocketIO = (server, corsConfig) => {
   const io = new SocketIOServer(server, {
-    cors: corsSocketOptions,
+    cors: corsConfig,
+    connectionStateRecovery: {
+      maxDisconnectionDuration: 2 * 60 * 1000,
+      skipMiddlewares: true,
+    },
+    pingTimeout: 10000,
+    pingInterval: 25000,
   });
 
-  io.use(async (socket, next) => {
-    const access_token = getAccessToken(socket.handshake.headers.cookie);
-    if (!access_token) {
-      return next(new Error("Authentication error: No token provided"));
-    }
-    try {
-      const decoded = jwt.verify(access_token, process.env.JWT_ACCESS_SECRET);
-      const user = await User.findById(decoded._id).select("+isVerified");
-      if (!user || !user.isVerified) {
-        return next(
-          new Error("Authentication error: User not found or inactive")
-        );
-      }
-      socket.user = {
-        _id: user._id,
-        role: user.role,
-        email: user.email,
-        tokenVersion: user.tokenVersion,
-        departmentId: user.department,
-      };
-      next();
-    } catch (err) {
-      next(new Error("Authentication error: Invalid token"));
-    }
-  });
+  // Authentication middleware
+  io.use(authenticateSocket);
 
   io.on("connection", (socket) => {
-    console.log(`User connected: ${socket.id}, UserID: ${socket.user._id}`);
+    console.log(`🔌 Socket connected: ${socket.id} (User: ${socket.user._id})`);
 
-    // --- FIX: Join the user to a room named after their own ID ---
-    // This is essential for the emitToUser function to work correctly.
-    socket.join(socket.user._id.toString());
+    // Join user-specific room
+    socket.join(`room:${socket.user._id}`);
 
-    socket.on("disconnect", () => {
-      console.log(`User disconnected: ${socket.id}`);
+    // Join department room
+    socket.join(`room:dept:${socket.user.department}`);
+
+    socket.on("disconnect", (reason) => {
+      console.log(`🔌 Socket disconnected: ${socket.id} (${reason})`);
     });
 
     socket.on("error", (err) => {
-      console.error(`Socket error on socket ${socket.id}:`, err);
+      console.error(`Socket error (${socket.id}):`, err);
       socket.disconnect(true);
     });
   });

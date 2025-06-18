@@ -2,9 +2,9 @@ import dotenv from "dotenv";
 dotenv.config();
 
 import { v2 as cloudinary } from "cloudinary";
-// import CustomError from "../errorHandler/CustomError.js";
+import CustomError from "../errorHandler/CustomError.js";
 
-// Configure Cloudinary - ensure these are in your .env file
+// Configure Cloudinary
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
@@ -13,41 +13,42 @@ cloudinary.config({
 });
 
 /**
- * Deletes resources from Cloudinary.
- * @param {string | string[]} publicIds - A single public_id or an array of public_ids.
- * @param {string} resourceType - The type of resource ('image', 'video', 'raw'). Defaults to 'auto'.
+ * Deletes resources from Cloudinary with bulk operation support
  */
 export const deleteFromCloudinary = async (
   publicIds,
   resourceType = "auto"
 ) => {
   if (!publicIds || (Array.isArray(publicIds) && publicIds.length === 0)) {
-    return; // Nothing to delete
+    return;
   }
 
   try {
     const idsToDelete = Array.isArray(publicIds) ? publicIds : [publicIds];
+    const BULK_LIMIT = 100;
 
-    // Group IDs by their resource type for efficient deletion
-    // For now, we assume a mix and use 'auto' or delete individually.
-    // A more advanced version could group by type.
+    if (idsToDelete.length <= BULK_LIMIT) {
+      await cloudinary.api.delete_resources(idsToDelete, {
+        resource_type: resourceType,
+        type: "upload",
+      });
+    } else {
+      for (let i = 0; i < idsToDelete.length; i += BULK_LIMIT) {
+        const chunk = idsToDelete.slice(i, i + BULK_LIMIT);
+        await cloudinary.api.delete_resources(chunk, {
+          resource_type: resourceType,
+          type: "upload",
+        });
+      }
+    }
 
-    // For mixed resource types, it's safer to delete one by one if types are not known.
-    // However, if we know the type, we can use delete_resources.
-    // As our uploader uses 'auto', we'll rely on individual deletes for safety.
-
-    const deletionPromises = idsToDelete.map((id) =>
-      cloudinary.uploader.destroy(id, { resource_type: resourceType })
-    );
-
-    await Promise.all(deletionPromises);
-    console.log(
-      `Successfully deleted ${idsToDelete.length} resource(s) from Cloudinary.`
-    );
+    console.log(`Deleted ${idsToDelete.length} Cloudinary resources`);
   } catch (error) {
     console.error("Cloudinary Deletion Error:", error);
-    // We log the error but don't throw, to not block the primary delete operation.
-    // In a production system, you might queue this for a retry.
+    throw new CustomError("Media cleanup failed", 500, "MEDIA-500", {
+      publicIds,
+      resourceType,
+    });
   }
 };
 
