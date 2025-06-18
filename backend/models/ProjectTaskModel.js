@@ -15,27 +15,18 @@ const projectTaskSchema = new mongoose.Schema(
         trim: true,
         minlength: [10, "Phone number must be at least 10 characters"],
         maxlength: [13, "Phone number cannot exceed 13 characters"],
+        match: [/^[0-9+\-\s()]+$/, "Invalid phone number format"],
       },
       address: {
         type: String,
         trim: true,
-        // required: [true, "Company address is required"],
       },
     },
     proforma: [
       {
-        url: {
-          type: String,
-          required: [true, "Proforma URL is required"],
-        },
-        public_id: {
-          type: String,
-          required: [true, "Proforma public_id is required"],
-        },
-        name: {
-          type: String,
-          required: [true, "Proforma file name is required"],
-        },
+        url: { type: String, required: true },
+        public_id: { type: String, required: true },
+        name: { type: String, required: true },
         type: {
           type: String,
           enum: ["image", "document", "invoice", "pdf"],
@@ -49,6 +40,12 @@ const projectTaskSchema = new mongoose.Schema(
     toObject: Task.schema.options.toObject,
   }
 );
+
+// Add text index for searchable fields
+projectTaskSchema.index({
+  "companyInfo.name": "text",
+  "companyInfo.address": "text",
+});
 
 const ProjectTask = Task.discriminator("ProjectTask", projectTaskSchema);
 

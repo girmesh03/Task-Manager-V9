@@ -11,23 +11,23 @@ const assignedTaskSchema = new mongoose.Schema(
           required: [true, "Assigned user is required"],
           validate: {
             validator: async function (userId) {
+              if (!this.parent().department) return false;
               const user = await mongoose
                 .model("User")
                 .findById(userId)
                 .select("department")
-                .session(this.$session());
-              // validate if the user department is the same as the task
-              // since the task is parent.
-              return user?.department?.equals(this.parent().department);
+                .lean();
+              return (
+                user?.department?.toString() ===
+                this.parent().department.toString()
+              );
             },
             message: "User must belong to task department",
           },
         },
       ],
       validate: {
-        validator: function (users) {
-          return users.length > 0;
-        },
+        validator: (users) => users?.length > 0,
         message: "At least one assigned user required",
       },
     },
@@ -37,6 +37,9 @@ const assignedTaskSchema = new mongoose.Schema(
     toObject: Task.schema.options.toObject,
   }
 );
+
+// Add index for department-based queries
+assignedTaskSchema.index({ department: 1 });
 
 const AssignedTask = Task.discriminator("AssignedTask", assignedTaskSchema);
 
