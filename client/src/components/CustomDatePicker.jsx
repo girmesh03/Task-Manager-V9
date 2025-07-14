@@ -59,8 +59,9 @@ const CustomDatePicker = () => {
 
   // Dispatch selected date to Redux on accept
   const handleOnAccept = (newDate) => {
+    if (!newDate) return;
     const formattedDate = newDate.format("YYYY-MM-DD");
-    // setValue(newDate);
+    setValue(newDate);
     dispatch(setSelectedDate(formattedDate));
   };
 

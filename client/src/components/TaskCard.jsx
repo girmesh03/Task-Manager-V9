@@ -47,10 +47,8 @@ const TaskCard = ({ task, onEdit }) => {
 
   const [deleteTask, { isLoading: isDeleting }] = useDeleteTaskMutation();
 
-  const startDate = dayjs(
-    new Date(task.createdAt).toISOString().split("T")[0]
-  ).format("MMM DD, YYYY ");
-  const endDate = dayjs(task.dueDate).format("MMM DD, YYYY");
+  const startDate = dayjs(task.createdAt).format("MMM D, HH:mm");
+  const endDate = dayjs(task.dueDate).format("MMM D, HH:mm");
   const assignedUsers = task.assignedTo || [];
   const createdByUser = task.createdBy;
 

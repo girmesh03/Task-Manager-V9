@@ -29,6 +29,12 @@ import ManagerIcon from "@mui/icons-material/SupervisorAccount";
 import AdminIcon from "@mui/icons-material/AdminPanelSettings";
 import SuperAdminIcon from "@mui/icons-material/Security";
 
+// mui active, verified icons
+import VerifiedUserIcon from "@mui/icons-material/VerifiedUser";
+import UnverifiedUserIcon from "@mui/icons-material/Report";
+import ActiveUserIcon from "@mui/icons-material/CheckCircle";
+import InactiveUserIcon from "@mui/icons-material/Cancel";
+
 export const drawerWidth = 240;
 
 // statusTypes
@@ -69,4 +75,16 @@ export const userRoleTypes = [
   { id: 2, label: "Manager", icon: ManagerIcon },
   { id: 3, label: "Admin", icon: AdminIcon },
   { id: 4, label: "SuperAdmin", icon: SuperAdminIcon },
+];
+
+// user active types
+export const userActiveTypes = [
+  { id: 1, label: "Active", icon: ActiveUserIcon },
+  { id: 2, label: "Inactive", icon: InactiveUserIcon },
+];
+
+// user verified types
+export const userVerifiedTypes = [
+  { id: 1, label: "Verified", icon: VerifiedUserIcon },
+  { id: 2, label: "Not Verified", icon: UnverifiedUserIcon },
 ];

@@ -85,8 +85,6 @@ const NotificationMenu = ({ anchorEl, open, onClose }) => {
 
   const notifications = data?.notifications || [];
 
-  console.log("Notifications:", notifications);
-
   return (
     <Menu
       id="notifications-menu"

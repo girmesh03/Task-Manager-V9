@@ -4,289 +4,170 @@ import CustomError from "../errorHandler/CustomError.js";
 import Department from "../models/DepartmentModel.js";
 import User from "../models/UserModel.js";
 import Notification from "../models/NotificationModel.js";
+import { emitToUser } from "../utils/SocketEmitter.js";
 
-import { emitToManagers, emitToUser } from "../utils/SocketEmitter.js";
+// Authorization middleware for SuperAdmin-only operations
+const verifySuperAdmin = (req, res, next) => {
+  if (req.user.role !== "SuperAdmin") {
+    return next(
+      new CustomError("Forbidden: Requires SuperAdmin privileges", 403)
+    );
+  }
+  next();
+};
 
 // @desc    Create Department
 // @route   POST /api/departments
 // @access  Private (SuperAdmin)
 const createDepartment = asyncHandler(async (req, res, next) => {
-  const { name, description, managers } = req.body;
+  verifySuperAdmin(req, res, async () => {
+    const { name, description, managers = [] } = req.body;
+    const session = await mongoose.startSession();
+    session.startTransaction();
 
-  // Basic validation
-  if (!name?.trim()) {
-    return next(new CustomError("Department name is required", 400));
-  }
+    try {
+      // Validate manager IDs
+      const invalidManagerIds = managers.filter(
+        (id) => !mongoose.Types.ObjectId.isValid(id)
+      );
 
-  // Validate managers is an array
-  if (managers && !Array.isArray(managers)) {
-    return next(new CustomError("Managers must be an array", 400));
-  }
+      if (invalidManagerIds.length > 0) {
+        throw new CustomError(
+          `Invalid manager IDs: ${invalidManagerIds.join(", ")}`,
+          400
+        );
+      }
 
-  const session = await mongoose.startSession();
-  session.startTransaction();
+      // Create department
+      const department = new Department({ name, description, managers });
+      await department.save({ session });
 
-  try {
-    // Check for existing department (case-insensitive)
-    const existingDept = await Department.findOne({
-      name: { $regex: new RegExp(`^${name}$`, "i") },
-    }).session(session);
-
-    if (existingDept) {
-      throw new CustomError("Department name already exists", 409);
-    }
-
-    // Create new department
-    const department = await Department.create(
-      [
-        {
-          name: name.trim(),
-          description,
-          managers: managers || [],
-        },
-      ],
-      { session }
-    );
-
-    const createdDepartment = department[0];
-
-    // Process managers if provided
-    if (managers?.length) {
+      // Process managers
       await Promise.all(
         managers.map(async (userId) => {
           const user = await User.findById(userId).session(session);
-
           if (!user) {
             throw new CustomError(`User ${userId} not found`, 404);
           }
-          if (!user.isActive || !user.isVerified) {
-            throw new CustomError(
-              `User ${user.email} is inactive or unverified`,
-              400
-            );
-          }
 
-          // Update user role and department
-          user.role = "Manager";
-          user.department = createdDepartment._id;
+          // Update user role/department
+          if (!["Manager", "Admin", "SuperAdmin"].includes(user.role)) {
+            user.role = "Manager";
+          }
+          user.department = department._id;
           await user.save({ session });
 
           // Create notification
-          await Notification.create(
-            [
-              {
-                user: user._id,
-                message: `You've been assigned as manager for ${createdDepartment.name} department`,
-                type: "SystemAlert",
-                department: createdDepartment._id,
-                linkedDocument: user._id,
-                linkedDocumentType: "User",
-              },
-            ],
-            { session }
-          );
+          const notification = new Notification({
+            user: user._id,
+            message: `You've been assigned as manager for ${department.name} department`,
+            type: "SystemAlert",
+            department: department._id,
+            linkedDocument: department._id,
+            linkedDocumentType: "Department",
+          });
+          await notification.save({ session });
+
+          // Emit socket event
+          emitToUser(user._id, "role-update", {
+            message: `You've been made manager of ${department.name}`,
+            departmentId: department._id,
+          });
         })
       );
 
-      // emitToUser(user._id, "role-update", {
-      //   message: `You've been made manager of ${createdDepartment.name}`,
-      //   departmentId: createdDepartment._id,
-      // });
+      await session.commitTransaction();
+      res.status(201).json({
+        success: true,
+        department,
+        message: "Department created successfully",
+      });
+    } catch (error) {
+      await session.abortTransaction();
+      next(error);
+    } finally {
+      session.endSession();
     }
-
-    // Commit transaction
-    await session.commitTransaction();
-    session.endSession();
-
-    res.status(201).json({
-      success: true,
-      department: createdDepartment,
-      message: "Department created successfully",
-    });
-  } catch (error) {
-    await session.abortTransaction();
-    session.endSession();
-    next(error);
-  }
+  });
 });
 
 // @desc    Get departments
 // @route   GET /api/departments?page=1&limit=10
-// @access  Private (SuperAdmin, Admin, Manager, User)
+// @access  Private (SuperAdmin: any, Other: Own department)
 const getAllDepartments = asyncHandler(async (req, res, next) => {
   const { page = 1, limit = 10 } = req.query;
   const requestor = req.user;
 
-  // Validate valid roles
-  const validRoles = ["SuperAdmin", "Admin", "Manager", "User"];
-  if (!validRoles.includes(requestor.role)) {
-    return next(new CustomError("Unauthorized role", 403));
-  }
-
-  // Validate pagination parameters
-  const parsedPage = Math.max(1, parseInt(page));
-  const parsedLimit = Math.max(1, parseInt(limit));
-  const skip = (parsedPage - 1) * parsedLimit;
-
-  const aggregationPipeline = [
-    {
-      $sort: { createdAt: -1 }, // Newest first
+  // Pagination setup
+  const options = {
+    page: parseInt(page, 10),
+    limit: parseInt(limit, 10),
+    populate: {
+      path: "managers",
+      select: "firstName lastName fullName position email role profilePicture",
     },
-    {
-      $lookup: {
-        from: "users",
-        localField: "managers",
-        foreignField: "_id",
-        as: "managers",
-        pipeline: [
-          {
-            $addFields: {
-              fullName: { $concat: ["$firstName", " ", "$lastName"] },
-            },
-          },
-          {
-            $project: {
-              _id: 1,
-              firstName: 1,
-              lastName: 1,
-              fullName: 1,
-              email: 1,
-              position: 1,
-              role: 1,
-              profilePicture: 1,
-            },
-          },
-        ],
-      },
-    },
-    {
-      $lookup: {
-        from: "tasks",
-        let: { departmentId: "$_id" },
-        pipeline: [
-          { $match: { $expr: { $eq: ["$department", "$$departmentId"] } } },
-          { $count: "count" },
-        ],
-        as: "taskCounts",
-      },
-    },
-    {
-      $addFields: {
-        taskCount: { $ifNull: [{ $arrayElemAt: ["$taskCounts.count", 0] }, 0] },
-      },
-    },
-    {
-      $project: {
-        taskCounts: 0,
-        __v: 0,
-      },
-    },
-    { $skip: skip },
-    { $limit: parsedLimit },
-  ];
+    sort: { createdAt: -1 },
+    lean: true,
+  };
 
-  // Filter departments based on user role
-  let departments = await Department.aggregate(aggregationPipeline);
+  // Authorization filter
+  const filter = ["SuperAdmin", "Admin"].includes(requestor.role)
+    ? {}
+    : { _id: requestor.department };
 
-  // Filter departments based on user role
-  const adminRoles = ["SuperAdmin", "Admin"];
-  departments = adminRoles.includes(requestor.role)
-    ? departments
-    : departments.filter((dept) => dept._id.equals(requestor.department._id));
+  const departments = await Department.paginate(filter, options);
 
-  // Count total documents based on user role
-  const totalCount = adminRoles.includes(requestor.role)
-    ? await Department.countDocuments()
-    : 1; // Only one department for User and Manager
+  // Enrich with member counts
+  const departmentsWithCounts = await Promise.all(
+    departments.docs.map(async (dept) => ({
+      ...dept,
+      memberCount: await User.countDocuments({ department: dept._id }),
+    }))
+  );
 
   res.status(200).json({
     success: true,
-    departments,
     pagination: {
-      page: parsedPage,
-      limit: parsedLimit,
-      total: totalCount,
-      totalPages: Math.ceil(totalCount / parsedLimit),
+      page: departments.page,
+      limit: departments.limit,
+      totalItems: departments.totalDocs,
+      totalPages: departments.totalPages,
     },
+    departments: departmentsWithCounts,
     message: "Departments retrieved successfully",
   });
 });
 
 // @desc    Get department by departmentId
 // @route   GET /api/departments/:departmentId
-// @access  Private (SuperAdmin, Admin, Manager, User)
+// @access  Private (SuperAdmin: any, Other: Own department)
 const getDepartmentById = asyncHandler(async (req, res, next) => {
   const { departmentId } = req.params;
+  const requestor = req.user;
 
-  // Validate MongoDB ID format
-  if (!mongoose.Types.ObjectId.isValid(departmentId)) {
-    return next(new CustomError("Invalid department ID format", 400));
+  // Authorization check
+  if (
+    !["SuperAdmin", "Admin"].includes(requestor.role) &&
+    !requestor.department.equals(departmentId)
+  ) {
+    return next(new CustomError("Unauthorized to access this department", 403));
   }
 
-  const aggregationPipeline = [
-    {
-      $match: { _id: new mongoose.Types.ObjectId(departmentId) },
-    },
-    {
-      $lookup: {
-        from: "users",
-        localField: "managers",
-        foreignField: "_id",
-        as: "managers",
-        pipeline: [
-          {
-            $project: {
-              _id: 1,
-              firstName: 1,
-              lastName: 1,
-              email: 1,
-              role: 1,
-              profilePicture: 1,
-              isActive: 1,
-            },
-          },
-        ],
-      },
-    },
-    {
-      $lookup: {
-        from: "tasks",
-        let: { departmentId: "$_id" },
-        pipeline: [
-          { $match: { $expr: { $eq: ["$department", "$$departmentId"] } } },
-          { $count: "count" },
-        ],
-        as: "taskStats",
-      },
-    },
-    {
-      $addFields: {
-        taskCount: { $ifNull: [{ $arrayElemAt: ["$taskStats.count", 0] }, 0] },
-        activeManagers: {
-          $filter: {
-            input: "$managers",
-            as: "manager",
-            cond: { $eq: ["$$manager.isActive", true] },
-          },
-        },
-      },
-    },
-    {
-      $project: {
-        taskStats: 0,
-        __v: 0,
-        "managers.isActive": 0,
-      },
-    },
-  ];
+  const department = await Department.findById(departmentId)
+    .populate({
+      path: "managers",
+      select: "firstName lastName fullName position email role profilePicture",
+    })
+    .lean();
 
-  const result = await Department.aggregate(aggregationPipeline);
-
-  if (!result.length) {
+  if (!department) {
     return next(new CustomError("Department not found", 404));
   }
 
-  const department = result[0];
+  // Add member count
+  department.memberCount = await User.countDocuments({
+    department: departmentId,
+  });
 
   res.status(200).json({
     success: true,
@@ -297,225 +178,258 @@ const getDepartmentById = asyncHandler(async (req, res, next) => {
 
 // @desc    Update Department
 // @route   PUT /api/departments/:departmentId
-// @access  Private (SuperAdmin Only)
+// @access  Private (SuperAdmin)
 const updateDepartmentById = asyncHandler(async (req, res, next) => {
-  const { departmentId } = req.params;
-  const { name, description, managers } = req.body;
+  verifySuperAdmin(req, res, async () => {
+    const { departmentId } = req.params;
+    const { name, description, managers } = req.body;
+    const session = await mongoose.startSession();
+    session.startTransaction();
 
-  const session = await mongoose.startSession();
-  session.startTransaction();
+    try {
+      // Validate department ID
+      if (!mongoose.Types.ObjectId.isValid(departmentId)) {
+        throw new CustomError("Invalid department ID format", 400);
+      }
 
-  try {
-    // 1. Validate ID format
-    if (!mongoose.Types.ObjectId.isValid(departmentId)) {
-      throw new CustomError("Invalid department ID format", 400);
-    }
+      // Validate managers
+      if (managers !== undefined && !Array.isArray(managers)) {
+        throw new CustomError("Managers must be an array", 400);
+      }
 
-    // 2. Find existing department
-    const existingDept = await Department.findById(departmentId).session(
-      session
-    );
-    if (!existingDept) {
-      throw new CustomError("Department not found", 404);
-    }
+      // Find existing department
+      const existingDept = await Department.findById(departmentId).session(
+        session
+      );
+      if (!existingDept) {
+        throw new CustomError("Department not found", 404);
+      }
 
-    // 3. Name uniqueness check (case-insensitive)
-    if (name && name.trim() !== existingDept.name) {
-      const duplicate = await Department.findOne({
-        name: { $regex: new RegExp(`^${name.trim()}$`, "i") },
-        _id: { $ne: departmentId },
+      // Check for SuperAdmin in department
+      const superAdminCount = await User.countDocuments({
+        department: departmentId,
+        role: "SuperAdmin",
       }).session(session);
 
-      if (duplicate)
-        throw new CustomError("Department name already exists", 409);
-    }
+      // Prevent modification of SuperAdmin department if it's the only one
+      if (superAdminCount > 0) {
+        const totalSuperAdmins = await User.countDocuments({
+          role: "SuperAdmin",
+        }).session(session);
 
-    // 4. Process managers changes
-    const currentManagers = existingDept.managers.map((id) => id.toString());
-    const newManagers = managers?.map((id) => id.toString()) || [];
+        if (totalSuperAdmins === superAdminCount) {
+          throw new CustomError(
+            "Cannot modify department containing the only SuperAdmin",
+            400
+          );
+        }
+      }
 
-    const addedManagers = newManagers.filter(
-      (id) => !currentManagers.includes(id)
-    );
-    const removedManagers = currentManagers.filter(
-      (id) => !newManagers.includes(id)
-    );
+      // Name uniqueness check
+      if (name && name.trim() !== existingDept.name) {
+        const duplicate = await Department.findOne({
+          name: { $regex: new RegExp(`^${name.trim()}$`, "i") },
+          _id: { $ne: departmentId },
+        }).session(session);
 
-    // 5. Prevent SuperAdmin removal validation
-    for (const userId of removedManagers) {
-      const user = await User.findById(userId).session(session);
+        if (duplicate) {
+          throw new CustomError("Department name already exists", 409);
+        }
+      }
 
-      // Critical check: Prevent removing SuperAdmin from their own department
-      if (user.role === "SuperAdmin" && user.department.equals(departmentId)) {
+      // Process managers
+      const currentManagers = existingDept.managers.map((id) => id.toString());
+      const newManagers = managers?.map((id) => id.toString()) || [];
+
+      const addedManagers = newManagers.filter(
+        (id) => !currentManagers.includes(id)
+      );
+      const removedManagers = currentManagers.filter(
+        (id) => !newManagers.includes(id)
+      );
+
+      // Validate manager IDs
+      const allManagerIds = [...newManagers];
+      const invalidManagerIds = allManagerIds.filter(
+        (id) => !mongoose.Types.ObjectId.isValid(id)
+      );
+
+      if (invalidManagerIds.length > 0) {
         throw new CustomError(
-          `Cannot remove SuperAdmin (${user.email}) from their assigned department`,
+          `Invalid manager IDs: ${invalidManagerIds.join(", ")}`,
           400
         );
       }
-    }
 
-    //  6. Handle removed managers
-    for (const userId of addedManagers) {
-      const user = await User.findById(userId).session(session);
+      // Handle added managers
+      await Promise.all(
+        addedManagers.map(async (userId) => {
+          const user = await User.findById(userId).session(session);
+          if (!user) throw new CustomError(`User ${userId} not found`, 404);
 
-      // Validation checks
-      if (!user) throw new CustomError(`User ${userId} not found`, 404);
-      if (!user.isActive || !user.isVerified) {
-        throw new CustomError(`User ${user.email} is inactive/unverified`, 400);
-      }
+          if (!user.isActive || !user.isVerified) {
+            throw new CustomError(
+              `User ${user.email} is inactive/unverified`,
+              400
+            );
+          }
 
-      // Update user role and department
-      user.role = "Manager";
-      user.department = departmentId;
-      await user.save({ session });
+          // Update user role/department
+          if (!["Manager", "Admin", "SuperAdmin"].includes(user.role)) {
+            user.role = "Manager";
+          }
+          user.department = departmentId;
+          await user.save({ session });
 
-      // Add notification
-      await Notification.create(
-        [
-          {
+          // Create notification
+          const notification = new Notification({
             user: user._id,
             message: `You were added as manager to ${
               name || existingDept.name
             } department`,
             type: "SystemAlert",
             department: departmentId,
-            linkedDocument: user._id,
-            linkedDocumentType: "User",
-          },
-        ],
-        { session }
+            linkedDocument: departmentId,
+            linkedDocumentType: "Department",
+          });
+          await notification.save({ session });
+
+          // Emit socket event
+          emitToUser(user._id, "role-update", {
+            message: `You were added as manager to ${
+              name || existingDept.name
+            }`,
+            departmentId,
+          });
+        })
       );
 
-      emitToUser(user._id, "role-update", {
-        message: `You were added as manager to ${name || existingDept.name}`,
-        departmentId,
-      });
-    }
+      // Handle removed managers
+      await Promise.all(
+        removedManagers.map(async (userId) => {
+          const user = await User.findById(userId).session(session);
+          if (!user) return;
 
-    // 6. Handle removed managers
-    for (const userId of removedManagers) {
-      const user = await User.findById(userId).session(session);
+          // Check if user is manager in other departments
+          const otherManagerRoles = await Department.countDocuments({
+            managers: userId,
+            _id: { $ne: departmentId },
+          }).session(session);
 
-      // Check if user is manager in other departments
-      const otherManagerRoles = await Department.countDocuments({
-        managers: userId,
-        _id: { $ne: departmentId },
-      }).session(session);
+          // Downgrade role if no other manager positions
+          if (!otherManagerRoles) {
+            user.role = "User";
+            await user.save({ session });
 
-      // Downgrade role if no other manager positions
-      if (!otherManagerRoles) {
-        user.role = "User";
-        await user.save({ session });
-
-        // Add notification
-        await Notification.create(
-          [
-            {
+            // Create notification
+            const notification = new Notification({
               user: user._id,
               message: `You were removed as manager from ${existingDept.name} department`,
               type: "SystemAlert",
               department: departmentId,
-              linkedDocument: user._id,
-              linkedDocumentType: "User",
-            },
-          ],
-          { session }
-        );
+              linkedDocument: departmentId,
+              linkedDocumentType: "Department",
+            });
+            await notification.save({ session });
 
-        emitToUser(user._id, "role-update", {
-          message: `You were removed as manager from ${existingDept.name}`,
-          departmentId,
-        });
-      }
+            emitToUser(user._id, "role-update", {
+              message: `You were removed as manager from ${existingDept.name}`,
+              departmentId,
+            });
+          }
+        })
+      );
+
+      // Format name and description
+      const formattedName = name ? name.trim() : existingDept.name;
+      const formattedDescription = description || existingDept.description;
+
+      // Update department
+      existingDept.name = formattedName;
+      existingDept.description = formattedDescription;
+      existingDept.managers = newManagers;
+
+      // Save
+      await existingDept.save({ session });
+
+      // Commit transaction
+      await session.commitTransaction();
+
+      // Prepare response
+      const response = await Department.findById(departmentId).populate({
+        path: "managers",
+        select:
+          "firstName lastName fullName position email role profilePicture",
+      });
+
+      // Send response
+      res.status(200).json({
+        success: true,
+        department: response,
+        message: "Department updated successfully",
+      });
+    } catch (error) {
+      await session.abortTransaction();
+      next(error);
+    } finally {
+      session.endSession();
     }
-
-    // 7. Update department document
-    const updatePayload = {
-      ...(name && { name: name.trim() }),
-      ...(description && { description }),
-      ...(managers && { managers: newManagers }),
-    };
-
-    const updatedDepartment = await Department.findByIdAndUpdate(
-      departmentId,
-      updatePayload,
-      { new: true, session }
-    ).populate({
-      path: "managers",
-      select: "firstName lastName fullName position email role profilePicture",
-    });
-
-    await session.commitTransaction();
-    // session.endSession();
-
-    res.status(200).json({
-      success: true,
-      department: updatedDepartment,
-      message: "Department updated successfully",
-    });
-  } catch (error) {
-    await session.abortTransaction();
-    // session.endSession();
-    next(error);
-  } finally {
-    session.endSession();
-  }
+  });
 });
 
-// @desc    Delete Department and all associated data
+// @desc    Delete Department
 // @route   DELETE /api/departments/:departmentId
-// @access  Private (SuperAdmin Only)
+// @access  Private (SuperAdmin)
 const deleteDepartmentById = asyncHandler(async (req, res, next) => {
-  const { departmentId } = req.params;
-  const session = await mongoose.startSession();
+  verifySuperAdmin(req, res, async () => {
+    const { departmentId } = req.params;
+    const session = await mongoose.startSession();
+    session.startTransaction();
 
-  try {
-    await session.withTransaction(async () => {
-      // 1. Validate ID format
-      if (!mongoose.Types.ObjectId.isValid(departmentId)) {
-        throw new CustomError("Invalid department ID format", 400);
-      }
-
-      // 2. Find department and check existence
+    try {
+      // Get department
       const department = await Department.findById(departmentId).session(
         session
       );
-      if (!department) throw new CustomError("Department not found", 404);
-
-      // 3. Attach current user to document for middleware validation
-      department.$currentUser = req.user; // REQUIRED for schema-level auth check
-
-      // 4. Additional protection: Verify acting user is department's SuperAdmin
-      const actingUser = await User.findById(req.user._id).session(session);
-      if (!actingUser || actingUser.role !== "SuperAdmin") {
-        throw new CustomError(
-          "Unauthorized - SuperAdmin privileges required",
-          403
-        );
+      if (!department) {
+        throw new CustomError("Department not found", 404);
       }
 
-      // const notificationMessage = `Department ${department.name} was deleted`;
-      // await emitToManagers(department._id, "department-deleted", {
-      //   message: notificationMessage,
-      //   departmentId,
-      // });
+      // Check for SuperAdmin in department
+      const superAdminCount = await User.countDocuments({
+        department: departmentId,
+        role: "SuperAdmin",
+      }).session(session);
 
-      // 5. Initiate deletion (triggers middleware with session)
+      // Prevent deletion if it contains the only SuperAdmin
+      if (superAdminCount > 0) {
+        const totalSuperAdmins = await User.countDocuments({
+          role: "SuperAdmin",
+        }).session(session);
+
+        if (totalSuperAdmins === superAdminCount) {
+          throw new CustomError(
+            "Cannot delete department containing the only SuperAdmin",
+            400
+          );
+        }
+      }
+
+      // Delete department (triggers schema cascade hooks)
       await department.deleteOne({ session });
-    });
 
-    res.status(200).json({
-      success: true,
-      message: "Department deleted successfully",
-    });
-  } catch (error) {
-    if (session.transaction.isActive) {
+      await session.commitTransaction();
+      res.status(200).json({
+        success: true,
+        message: "Department deleted successfully",
+      });
+    } catch (error) {
       await session.abortTransaction();
+      next(error);
+    } finally {
+      session.endSession();
     }
-    next(error);
-  } finally {
-    session.endSession();
-  }
+  });
 });
 
 export {

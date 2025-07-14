@@ -2,7 +2,7 @@
 
 import { useSelector } from "react-redux";
 import { selectCurrentUser } from "../../redux/features/authSlice";
-import Grid from "@mui/material/Grid2";
+import Grid from "@mui/material/Grid";
 import Card from "@mui/material/Card";
 import Typography from "@mui/material/Typography";
 import ProfilePictureUploader from "./ProfilePictureUploader";

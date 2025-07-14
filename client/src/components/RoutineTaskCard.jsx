@@ -67,7 +67,7 @@ const RoutineTaskCard = ({ task, onEdit }) => {
               Department: {task.department.name}
             </Typography>
             <Typography variant="body1" color="text.secondary">
-              {dayjs(task.date).format("MMMM DD, YYYY")}
+              {dayjs(task.date).format("MMM D, HH:mm")}
             </Typography>
           </Stack>
         </CardContent>

@@ -1,5 +1,5 @@
 import { lazy } from "react";
-import { createBrowserRouter, RouterProvider } from "react-router";
+import { createBrowserRouter, RouterProvider } from "react-router-dom";
 import { ToastContainer } from "react-toastify";
 import CssBaseline from "@mui/material/CssBaseline";
 import "react-toastify/dist/ReactToastify.css";
@@ -46,48 +46,48 @@ const NotFound = lazy(() => import("./pages/NotFound"));
 const router = createBrowserRouter([
   {
     path: "/",
-    Component: RootLayout,
+    element: <RootLayout />,
     children: [
       {
-        Component: AuthLayout,
+        element: <AuthLayout />,
         children: [
-          { index: true, Component: Home },
-          { path: "login", Component: Login },
-          { path: "verify-email", Component: VerifyEmail },
-          { path: "reset-password/:resetToken", Component: ResetPassword },
-          { path: "forgot-password", Component: ForgotPassword },
+          { index: true, element: <Home /> },
+          { path: "login", element: <Login /> },
+          { path: "verify-email", element: <VerifyEmail /> },
+          { path: "reset-password/:resetToken", element: <ResetPassword /> },
+          { path: "forgot-password", element: <ForgotPassword /> },
         ],
       },
       {
-        Component: ProtectedRoute,
+        element: <ProtectedRoute />,
         children: [
           {
-            Component: AppLayout,
+            element: <AppLayout />,
             children: [
-              { path: "dashboard", Component: Dashboard },
-              { path: "tasks", Component: Tasks },
-              { path: "routine-tasks", Component: RoutineTasks },
-              { path: "tasks/:taskId/details", Component: TaskDetails },
+              { path: "dashboard", element: <Dashboard /> },
+              { path: "tasks", element: <Tasks /> },
+              { path: "routine-tasks", element: <RoutineTasks /> },
+              { path: "tasks/:taskId/details", element: <TaskDetails /> },
               {
                 path: "routine-tasks/:taskId/details",
-                Component: RoutineTaskDetails,
+                element: <RoutineTaskDetails />,
               },
-              { path: "users", Component: Users },
-              { path: "users/:userId/profile", Component: UserProfile },
-              { path: "users/:userId/account", Component: UserAccount },
-              { path: "admin-panel", Component: AdminPanel },
-              { path: "reports", Component: Reports },
+              { path: "users", element: <Users /> },
+              { path: "users/:userId/profile", element: <UserProfile /> },
+              { path: "users/:userId/account", element: <UserAccount /> },
+              { path: "admin-panel", element: <AdminPanel /> },
+              { path: "reports", element: <Reports /> },
             ],
           },
         ],
       },
       {
         path: "error",
-        Component: ErrorPage,
+        element: <ErrorPage />,
       },
       {
         path: "*",
-        Component: NotFound,
+        element: <NotFound />,
       },
     ],
   },

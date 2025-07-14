@@ -1,3 +1,4 @@
+import { createElement } from "react";
 import { alpha } from "@mui/material/styles";
 import { outlinedInputClasses } from "@mui/material/OutlinedInput";
 import { svgIconClasses } from "@mui/material/SvgIcon";
@@ -317,13 +318,15 @@ export const inputsCustomizations = {
   MuiCheckbox: {
     defaultProps: {
       disableRipple: true,
-      icon: (
-        <CheckBoxOutlineBlankRoundedIcon
-          sx={{ color: "hsla(210, 0%, 0%, 0.0)" }}
-        />
-      ),
-      checkedIcon: <CheckRoundedIcon sx={{ height: 14, width: 14 }} />,
-      indeterminateIcon: <RemoveRoundedIcon sx={{ height: 14, width: 14 }} />,
+      icon: createElement(CheckBoxOutlineBlankRoundedIcon, {
+        sx: { color: "hsla(210, 0%, 0%, 0.0)" },
+      }),
+      checkedIcon: createElement(CheckRoundedIcon, {
+        sx: { height: 14, width: 14 },
+      }),
+      indeterminateIcon: createElement(RemoveRoundedIcon, {
+        sx: { height: 14, width: 14 },
+      }),
     },
     styleOverrides: {
       root: ({ theme }) => ({
@@ -384,59 +387,66 @@ export const inputsCustomizations = {
   },
   MuiOutlinedInput: {
     styleOverrides: {
-      input: ({ theme }) => ({
+      input: {
         padding: 0,
-
-        // default = light‑mode autofill override
+        "&::placeholder": {
+          opacity: 0.7,
+          color: gray[500],
+        },
         "&:-webkit-autofill, &:-webkit-autofill:hover, &:-webkit-autofill:focus":
           {
-            // use paper background so Chrome’s yellow is fully covered
-            WebkitBoxShadow: `inset 0 0 0px 1000px ${theme.palette.background.default} !important`,
-            WebkitTextFillColor: `${theme.palette.text.primary} !important`,
-            caretColor: `${theme.palette.text.primary} !important`,
+            WebkitBoxShadow: `inset 0 0 0px 1000px var(--template-palette-background-default) !important`,
+            WebkitTextFillColor: `var(--template-palette-text-primary) !important`,
+            caretColor: `var(--template-palette-text-primary) !important`,
           },
-      }),
+      },
       root: ({ theme }) => ({
         padding: "8px 12px",
         color: (theme.vars || theme).palette.text.primary,
         borderRadius: (theme.vars || theme).shape.borderRadius,
-        border: `1px solid ${(theme.vars || theme).palette.divider}`,
+        // Remove direct border from root
         backgroundColor: (theme.vars || theme).palette.background.default,
         transition: "border 120ms ease-in",
-        "&:hover": {
+        // Add hover/focus states to notchedOutline
+        "&:hover .MuiOutlinedInput-notchedOutline": {
           borderColor: gray[400],
         },
-        [`&.${outlinedInputClasses.focused}`]: {
-          outline: `3px solid ${alpha(brand[500], 0.5)}`,
-          borderColor: brand[400],
-        },
+        [`&.${outlinedInputClasses.focused} .MuiOutlinedInput-notchedOutline`]:
+          {
+            borderColor: brand[400],
+            borderWidth: "1px",
+          },
+        // [`&.${outlinedInputClasses.focused}`]: {
+        //   outline: `3px solid ${alpha(brand[500], 0.5)}`,
+        // },
         ...theme.applyStyles("dark", {
-          "&:hover": {
+          "&:hover .MuiOutlinedInput-notchedOutline": {
             borderColor: gray[500],
           },
         }),
         variants: [
           {
-            props: {
-              size: "small",
-            },
-            style: {
-              // height: '2.25rem',
-            },
+            props: { size: "small" },
+            style: { height: "2.25rem" },
           },
           {
-            props: {
-              size: "medium",
-            },
-            style: {
-              // height: '2.5rem',
-            },
+            props: { size: "medium" },
+            style: { height: "2.5rem" },
+          },
+          {
+            props: { multiline: true },
+            style: { height: "auto" }, // Allow multiline to expand
           },
         ],
       }),
-      notchedOutline: {
-        border: "none",
-      },
+      notchedOutline: ({ theme }) => ({
+        // Apply border styles to notchedOutline
+        border: `1px solid ${(theme.vars || theme).palette.divider}`,
+        borderRadius: (theme.vars || theme).shape.borderRadius,
+        transition: theme.transitions.create("border-color", {
+          duration: 120,
+        }),
+      }),
     },
   },
   MuiInputAdornment: {

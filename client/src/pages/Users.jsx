@@ -1,9 +1,9 @@
 import { useCallback, useMemo, useState } from "react";
-import { Navigate } from "react-router";
+import { Navigate } from "react-router-dom";
 
 import Container from "@mui/material/Container";
 import Typography from "@mui/material/Typography";
-import Grid from "@mui/material/Grid2";
+import Grid from "@mui/material/Grid";
 
 import { useSelector } from "react-redux";
 import { selectSelectedDepartmentId } from "../redux/features/authSlice";

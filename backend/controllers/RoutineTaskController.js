@@ -1,77 +1,13 @@
 import mongoose from "mongoose";
 import asyncHandler from "express-async-handler";
-import CustomError from "../errorHandler/CustomError.js";
+import User from "../models/UserModel.js";
 import RoutineTask from "../models/RoutineTaskModel.js";
 import Notification from "../models/NotificationModel.js";
-import User from "../models/UserModel.js";
-
-import { getFormattedDate } from "../utils/GetDateIntervals.js";
+import CustomError from "../errorHandler/CustomError.js";
 import { emitToManagers } from "../utils/SocketEmitter.js";
+import {customDayjs} from "../utils/GetDateIntervals.js";
 
-// notifyDepartmentLeadership function
-// const notifyDepartmentLeadership = async (
-//   departmentId,
-//   excludedUserId,
-//   message,
-//   taskId,
-//   session
-// ) => {
-//   const managers = await User.find({
-//     department: departmentId,
-//     role: { $in: ["Manager", "Admin", "SuperAdmin"] },
-//     _id: { $ne: excludedUserId },
-//   });
-
-//   const notification = {
-//     type: "SystemAlert",
-//     message,
-//     linkedDocument: taskId,
-//     linkedDocumentType: "RoutineTask",
-//     department: departmentId,
-//   };
-
-//   managers.forEach(async (user) => {
-//     const userNotification = { ...notification, user: user._id };
-//     await Notification.create(userNotification, { session });
-//     emitToUser(user._id, "new-notification", userNotification);
-//   });
-// };
-
-// notifyDepartmentLeadership function
-// const notifyDepartmentLeadership = async (
-//   departmentId,
-//   excludedUserId,
-//   message,
-//   taskId,
-//   session
-// ) => {
-//   const leaders = await User.find({
-//     department: departmentId,
-//     role: { $in: ["Manager", "Admin", "SuperAdmin"] },
-//     _id: { $ne: excludedUserId },
-//   }).session(session);
-
-//   if (leaders.length === 0) return;
-
-//   const notifications = leaders.map((leader) => {
-//     const notif = {
-//       user: leader._id,
-//       type: "SystemAlert",
-//       message,
-//       linkedDocument: taskId,
-//       linkedDocumentType: "RoutineTask",
-//       department: departmentId,
-//     };
-
-//     // Real-time emit
-//     emitToUser(leader._id, "routine-update", notif);
-//     return notif;
-//   });
-
-//   await Notification.insertMany(notifications, { session });
-// };
-
-// notifyDepartmentLeadership function
+// Helper function to notify department leadership
 const notifyDepartmentLeadership = async (
   departmentId,
   excludedUserId,
@@ -79,32 +15,34 @@ const notifyDepartmentLeadership = async (
   taskId,
   session
 ) => {
-  const leaders = await User.find({
-    department: departmentId,
-    role: { $in: ["Manager", "Admin", "SuperAdmin"] },
-    _id: { $ne: excludedUserId },
-  }).session(session);
+  try {
+    const leaders = await User.find({
+      department: departmentId,
+      role: { $in: ["Manager", "Admin", "SuperAdmin"] },
+      _id: { $ne: excludedUserId },
+      isActive: true,
+    }).session(session);
 
-  if (leaders.length === 0) return;
+    if (leaders.length === 0) return;
 
-  const notifications = leaders.map((leader) => ({
-    user: leader._id,
-    type: "SystemAlert",
-    message,
-    linkedDocument: taskId,
-    linkedDocumentType: "RoutineTask",
-    department: departmentId,
-  }));
+    const notifications = leaders.map((leader) => ({
+      user: leader._id,
+      type: "SystemAlert",
+      message,
+      linkedDocument: taskId,
+      linkedDocumentType: "RoutineTask",
+      department: departmentId,
+    }));
 
-  // Save to database and emit real-time notifications
-  await Notification.insertMany(notifications, { session });
-
-  // Emit to all managers using optimized utility
-  await emitToManagers(departmentId, "routine-update", {
-    message,
-    taskId,
-    departmentId,
-  });
+    await Notification.insertMany(notifications, { session });
+    await emitToManagers(departmentId, "routine-update", {
+      message,
+      taskId,
+      departmentId,
+    });
+  } catch (error) {
+    console.error("Notification error:", error.message);
+  }
 };
 
 // @desc    Create Routine Task
@@ -116,62 +54,64 @@ const createRoutineTask = asyncHandler(async (req, res, next) => {
 
   try {
     const { departmentId } = req.params;
-    const { date, performedTasks } = req.body;
+    const { date, performedTasks, attachments } = req.body;
     const userId = req.user._id;
 
-    // Validate input data
-    const taskDate = getFormattedDate(new Date(date), 0);
-    if (taskDate > getFormattedDate(new Date(), 0)) {
-      throw new CustomError("Cannot create future-dated tasks", 400);
+    // Validate input
+    if (
+      !performedTasks ||
+      !Array.isArray(performedTasks) ||
+      performedTasks.length === 0
+    ) {
+      throw new CustomError("At least one task must be performed", 400);
     }
 
-    if (!performedTasks?.length) {
-      throw new CustomError("At least one task must be performed", 400);
+    // Validate date format and ensure it's not in future
+    const taskDate = customDayjs(date);
+    if (!taskDate.isValid()) {
+      throw new CustomError("Invalid date format", 400);
+    }
+    if (taskDate.isAfter(customDayjs())) {
+      throw new CustomError("Cannot create future-dated tasks", 400);
     }
 
     // Create task
     const routineTask = new RoutineTask({
       department: departmentId,
+      date: taskDate.toDate(),
       performedBy: userId,
-      date: taskDate,
-      performedTasks,
+      performedTasks: performedTasks,
+      attachments: attachments || [],
     });
 
-    await routineTask.validate({ session });
+    // Save task
     await routineTask.save({ session });
 
     // Notify leadership
-    // await notifyDepartmentLeadership(
-    //   departmentId,
-    //   userId,
-    //   `New routine task logged: ${taskDate}`,
-    //   routineTask._id,
-    //   session
-    // );
-
     await notifyDepartmentLeadership(
       departmentId,
       userId,
-      `New routine task logged: ${taskDate}`,
+      `New routine task logged: ${taskDate.format("MMM DD, YYYY")}`,
       routineTask._id,
       session
     );
 
+    // Populate response data
     const populatedTask = await RoutineTask.findById(routineTask._id)
       .populate("department", "name")
-      .populate(
-        "performedBy",
-        "firstName lastName fullName email position role profilePicture"
-      )
+      .populate({
+        path: "performedBy",
+        select: "firstName lastName fullName position email profilePicture",
+        options: { virtuals: true },
+      })
       .session(session);
 
+    // Commit transaction
     await session.commitTransaction();
+
     res.status(201).json({
       success: true,
-      task: {
-        ...populatedTask._doc,
-        date: new Date(populatedTask.date).toISOString().split("T")[0],
-      },
+      task: populatedTask,
       message: "Routine task created successfully",
     });
   } catch (error) {
@@ -186,94 +126,87 @@ const createRoutineTask = asyncHandler(async (req, res, next) => {
 // @route   GET /api/routine-tasks/department/:departmentId
 // @access  Private (User, Manager, Admin, SuperAdmin)
 const getAllRoutineTasks = asyncHandler(async (req, res, next) => {
-  const session = await mongoose.startSession();
-  try {
-    const { departmentId } = req.params;
-    const { page = 1, limit = 10 } = req.query;
+  const { departmentId } = req.params;
+  const { page = 1, limit = 10, currentDate } = req.query;
 
-    const options = {
-      page: parseInt(page),
-      limit: parseInt(limit),
-      sort: { date: -1 },
-      populate: [
-        { path: "department", select: "name" },
-        {
-          path: "performedBy",
-          select:
-            "firstName lastName fullName email position role profilePicture",
-        },
-      ],
-      session,
-    };
+  // Build query filter
+  const filter = { department: departmentId };
 
-    const results = await RoutineTask.paginate(
-      { department: departmentId },
-      options
-    );
+  // Get date range and validate
+  const start = customDayjs(currentDate).utc(true).subtract(29, "days");
+  const end = customDayjs(currentDate).utc(true).endOf("day");
 
-    res.status(200).json({
-      success: true,
-      pagination: {
-        page: results.page,
-        limit: results.limit,
-        totalPages: results.totalPages,
-        totalItems: results.totalDocs,
-        hasNextPage: results.hasNextPage,
-        hasPrevPage: results.hasPrevPage,
-      },
-      tasks: results.docs.map((task) => {
-        return {
-          ...task.toObject(),
-          date: new Date(task.date).toISOString().split("T")[0],
-        };
-      }),
-    });
-  } catch (error) {
-    next(error);
-  } finally {
-    session.endSession();
+  if (!start.isValid() || !end.isValid()) {
+    return next(new CustomError("Invalid date range", 400));
   }
+
+  // Add date range filter
+  filter.date = { $gte: start.toDate(), $lte: end.toDate() };
+
+  // Pagination options
+  const options = {
+    page: parseInt(page, 10) || 1,
+    limit: parseInt(limit, 10) || 10,
+    sort: { date: -1, createdAt: -1 },
+    populate: [
+      { path: "department", select: "name" },
+      {
+        path: "performedBy",
+        select: "firstName lastName fullName position email profilePicture",
+      },
+    ],
+  };
+
+  // Execute paginated query
+  const results = await RoutineTask.paginate(filter, options);
+
+  console.log("results", results.docs);
+
+  res.status(200).json({
+    success: true,
+    pagination: {
+      page: results.page,
+      limit: results.limit,
+      totalPages: results.totalPages,
+      totalItems: results.totalDocs,
+    },
+    tasks: results.docs,
+    message: "Routine tasks retrieved successfully",
+  });
 });
 
 // @desc    Get Routine Task by ID
 // @route   GET /api/routine-tasks/department/:departmentId/task/:taskId
 // @access  Private (User, Manager, Admin, SuperAdmin)
 const getRoutineTaskById = asyncHandler(async (req, res, next) => {
-  const session = await mongoose.startSession();
+  const { departmentId, taskId } = req.params;
 
-  try {
-    const { departmentId, taskId } = req.params;
-
-    // Find task with session-based query
-    const task = await RoutineTask.findOne({
-      _id: taskId,
-      department: departmentId,
-    })
-      .populate("department", "name")
-      .populate(
-        "performedBy",
-        "firstName lastName fullName email position role profilePicture"
-      )
-      .session(session);
-
-    if (!task) {
-      throw new CustomError("Routine task not found", 404);
-    }
-
-    // Return task data
-    res.status(200).json({
-      success: true,
-      task: {
-        ...task._doc,
-        date: new Date(task.date).toISOString().split("T")[0],
-      },
-      message: "Routine task retrieved successfully",
-    });
-  } catch (error) {
-    next(error);
-  } finally {
-    session.endSession();
+  // Validate IDs
+  if (!mongoose.Types.ObjectId.isValid(taskId)) {
+    return next(new CustomError("Invalid task ID", 400));
   }
+
+  // Find task
+  const task = await RoutineTask.findOne({
+    _id: taskId,
+    department: departmentId,
+  })
+    .populate("department", "name")
+    .populate({
+      path: "performedBy",
+      select: "firstName lastName fullName position email profilePicture",
+      options: { virtuals: true },
+    });
+
+  if (!task) {
+    return next(new CustomError("Routine task not found", 404));
+  }
+
+  res.status(200).json({
+    success: true,
+    task,
+    message: "Routine task retrieved successfully",
+  });
 });
 
 // @desc    Update Routine Task
@@ -285,11 +218,23 @@ const updateRoutineTask = asyncHandler(async (req, res, next) => {
 
   try {
     const { taskId } = req.params;
-    const updates = req.body;
+    const { performedTasks } = req.body;
     const userId = req.user._id;
 
+    // Validate input
+    if (
+      !performedTasks ||
+      !Array.isArray(performedTasks) ||
+      performedTasks.length === 0
+    ) {
+      throw new CustomError("At least one task must be performed", 400);
+    }
+
+    // Find task
     const task = await RoutineTask.findById(taskId).session(session);
-    if (!task) throw new CustomError("Task not found", 404);
+    if (!task) {
+      throw new CustomError("Task not found", 404);
+    }
 
     // Authorization check
     const isPerformer = task.performedBy.equals(userId);
@@ -301,67 +246,35 @@ const updateRoutineTask = asyncHandler(async (req, res, next) => {
       throw new CustomError("Not authorized to update this task", 403);
     }
 
-    // Prevent date modification for existing tasks
-    if (updates.date) {
-      const newDate = getFormattedDate(new Date(updates.date), 0);
-      if (newDate !== getFormattedDate(task.date, 0)) {
-        throw new CustomError("Task date cannot be modified", 400);
-      }
-    }
-
-    // Validate performed tasks
-    if (updates.performedTasks) {
-      if (!Array.isArray(updates.performedTasks)) {
-        throw new CustomError("Performed tasks must be an array", 400);
-      }
-      if (updates.performedTasks.length === 0) {
-        throw new CustomError("At least one task must be performed", 400);
-      }
-    }
-
-    // Apply updates
-    Object.keys(updates).forEach((key) => {
-      if (["performedTasks"].includes(key)) {
-        task[key] = updates[key];
-      }
-    });
-
-    // await task.validate({ session });
+    // Update task details
+    task.performedTasks = performedTasks;
     await task.save({ session });
 
     // Notify leadership
-    // await notifyDepartmentLeadership(
-    //   task.department,
-    //   userId,
-    //   `Routine task updated: ${getFormattedDate(task.date, 0)}`,
-    //   task._id,
-    //   session
-    // );
-
+    const taskDate = customDayjs(task.date).format("MMMM D, YYYY");
     await notifyDepartmentLeadership(
       task.department,
       userId,
-      `Routine task updated: ${getFormattedDate(task.date, 0)}`,
+      `Routine task updated: ${taskDate}`,
       task._id,
       session
     );
 
+    // Get updated task with populated data
     const updatedTask = await RoutineTask.findById(taskId)
       .populate("department", "name")
-      .populate(
-        "performedBy",
-        "firstName lastName fullName email position role profilePicture"
-      )
+      .populate({
+        path: "performedBy",
+        select: "firstName lastName fullName position email profilePicture",
+        options: { virtuals: true },
+      })
       .session(session);
 
     await session.commitTransaction();
 
     res.status(200).json({
       success: true,
-      task: {
-        ...updatedTask._doc,
-        date: new Date(updatedTask.date).toISOString().split("T")[0],
-      },
+      task: updatedTask,
       message: "Routine task updated successfully",
     });
   } catch (error) {
@@ -383,10 +296,13 @@ const deleteRoutineTask = asyncHandler(async (req, res, next) => {
     const { taskId } = req.params;
     const userId = req.user._id;
 
+    // Find task
     const task = await RoutineTask.findById(taskId).session(session);
-    if (!task) throw new CustomError("Task not found", 404);
+    if (!task) {
+      throw new CustomError("Task not found", 404);
+    }
 
-    // Authorization: Performer or Manager+
+    // Authorization check
     const isPerformer = task.performedBy.equals(userId);
     const isManagerPlus = ["Manager", "Admin", "SuperAdmin"].includes(
       req.user.role
@@ -396,6 +312,7 @@ const deleteRoutineTask = asyncHandler(async (req, res, next) => {
       throw new CustomError("Not authorized to delete this task", 403);
     }
 
+    // Delete task (triggers schema hooks)
     await task.deleteOne({ session });
     await session.commitTransaction();
 

@@ -1,26 +1,20 @@
+// backend/middlewares/rateLimiter.js
 import rateLimit from "express-rate-limit";
 
+const windowMinutes = process.env.NODE_ENV === "production" ? 15 : 60;
+const maxRequests = process.env.NODE_ENV === "production" ? 100 : 500;
+
 const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: (req, res) => {
-    // Allow more requests for admins
-    return req.user?.role === "Admin" ? 500 : 100;
-  },
+  windowMs: windowMinutes * 60 * 1000,
+  max: maxRequests,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => process.env.NODE_ENV === "development",
   message: {
     success: false,
     message: "Too many requests, please try again later",
-    errorCode: "RATE_LIMIT-429",
+    errorCode: "RATE_LIMITED",
   },
-  skip: (req) => {
-    // Skip in development or for internal IPs
-    return (
-      process.env.NODE_ENV === "development" ||
-      req.ip.startsWith("192.168.") ||
-      req.ip === "::1"
-    );
-  },
-  standardHeaders: true,
-  legacyHeaders: false,
 });
 
 export default authLimiter;

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router";
+import { Link, useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { toast } from "react-toastify";
 
@@ -34,7 +34,9 @@ const ForgotPassword = () => {
   const onSubmit = async (formData) => {
     setError("");
     try {
-      const { message } = await makeRequest.post("/auth/forgot-password", {
+      const {
+        data: { message },
+      } = await makeRequest.post("/auth/forgot-password", {
         email: formData.email,
       });
       reset();

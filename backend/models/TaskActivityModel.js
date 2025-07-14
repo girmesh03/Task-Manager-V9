@@ -1,7 +1,15 @@
 import mongoose from "mongoose";
 import mongoosePaginate from "mongoose-paginate-v2";
-import CustomError from "../errorHandler/CustomError.js";
-import { getFormattedDate } from "../utils/GetDateIntervals.js";
+import {customDayjs} from "../utils/GetDateIntervals.js";
+import { deleteFromCloudinary } from "../utils/cloudinaryHelper.js";
+
+// Status transition rules
+const validTransitions = {
+  "To Do": ["In Progress", "Pending"],
+  "In Progress": ["In Progress", "Completed", "Pending"], // Allow self-transition
+  Completed: ["Pending", "In Progress"],
+  Pending: ["In Progress", "Completed"],
+};
 
 const taskActivitySchema = new mongoose.Schema(
   {
@@ -24,30 +32,42 @@ const taskActivitySchema = new mongoose.Schema(
     statusChange: {
       from: {
         type: String,
-        enum: ["To Do", "In Progress", "Completed", "Pending"],
+        enum: Object.keys(validTransitions),
       },
       to: {
         type: String,
-        enum: ["To Do", "In Progress", "Completed", "Pending"],
+        enum: Object.keys(validTransitions),
         required: [true, "Status change is required"],
       },
     },
+    attachments: [
+      {
+        _id: false,
+        url: { type: String },
+        public_id: { type: String },
+        type: {
+          type: String,
+          enum: ["image", "video", "pdf"],
+          default: "image",
+        },
+        uploadedAt: {
+          type: Date,
+          default: () => customDayjs().toDate(),
+        },
+      },
+    ],
   },
   {
     timestamps: true,
     versionKey: false,
     toJSON: {
-      transform: function (doc, ret) {
-        ret.createdAt = getFormattedDate(ret.createdAt, 0);
-        ret.updatedAt = getFormattedDate(ret.updatedAt, 0);
+      transform: (doc, ret) => {
         delete ret.id;
         return ret;
       },
     },
     toObject: {
-      transform: function (doc, ret) {
-        ret.createdAt = getFormattedDate(ret.createdAt, 0);
-        ret.updatedAt = getFormattedDate(ret.updatedAt, 0);
+      transform: (doc, ret) => {
         delete ret.id;
         return ret;
       },
@@ -55,51 +75,61 @@ const taskActivitySchema = new mongoose.Schema(
   }
 );
 
-// Indexes
-taskActivitySchema.index({ task: 1, "statusChange.to": 1 });
-taskActivitySchema.index({ performedBy: 1, createdAt: -1 });
-
-// Plugins
-taskActivitySchema.plugin(mongoosePaginate);
-
-// State Transition Logic
+// Status transition validation
 taskActivitySchema.pre("save", async function (next) {
-  if (!this.statusChange) return next();
+  const session = this.$session();
+  const task = await mongoose
+    .model("Task")
+    .findById(this.task)
+    .session(session);
 
-  const task = await mongoose.model("Task").findById(this.task);
-  if (!task) return next(new CustomError("Task not found", 404, "TASK-404"));
+  if (this.statusChange) {
+    // Auto-fill 'from' status
+    if (!this.statusChange.from) this.statusChange.from = task.status;
 
-  // Set from status if missing
-  if (!this.statusChange.from) {
-    this.statusChange.from = task.status;
+    // Validate current task status
+    if (this.statusChange.from !== task.status) {
+      return next(new CustomError("Status transition mismatch", 400));
+    }
+
+    // Validate transition rules
+    if (
+      !validTransitions[this.statusChange.from]?.includes(this.statusChange.to)
+    ) {
+      return next(new CustomError("Invalid status transition", 400));
+    }
+
+    // Update parent task
+    task.status = this.statusChange.to;
+    await task.save({ session });
   }
-
-  // Validate transition
-  const validTransitions = {
-    "To Do": ["In Progress", "Pending"],
-    "In Progress": ["In Progress", "Completed", "Pending"],
-    Completed: ["In Progress", "Pending"],
-    Pending: ["In Progress", "Completed"],
-  };
-
-  if (
-    !validTransitions[this.statusChange.from]?.includes(this.statusChange.to)
-  ) {
-    return next(
-      new CustomError(
-        `Invalid status transition from ${this.statusChange.from} to ${this.statusChange.to}`,
-        400,
-        "TASK-400"
-      )
-    );
-  }
-
-  // Update task status
-  task.status = this.statusChange.to;
-  await task.save();
   next();
 });
 
-const TaskActivity = mongoose.model("TaskActivity", taskActivitySchema);
+// Cascade delete attachments and notifications
+taskActivitySchema.pre("deleteOne", { document: true }, async function (next) {
+  const session = this.$session();
+  try {
+    // Delete Cloudinary attachments
+    if (this.attachments?.length > 0) {
+      const publicIds = this.attachments.map((a) => a.public_id);
+      await deleteFromCloudinary(publicIds, "raw");
+    }
 
-export default TaskActivity;
+    // Delete notifications
+    await mongoose
+      .model("Notification")
+      .deleteMany({
+        linkedDocument: this._id,
+        linkedDocumentType: "TaskActivity",
+      })
+      .session(session);
+
+    next();
+  } catch (err) {
+    next(err);
+  }
+});
+
+taskActivitySchema.plugin(mongoosePaginate);
+export default mongoose.model("TaskActivity", taskActivitySchema);

@@ -182,7 +182,7 @@ const getRoutineTaskReport = asyncHandler(async (req, res, next) => {
   }
 
   // Get date intervals
-  const dates = getDateIntervals(dayjs(currentDate).format("YYYY-MM-DD"));
+  const dates = getDateIntervals(currentDate);
   if (!dates) return next(new CustomError("Invalid date format", 400));
 
   const { last30DaysStart: startOfDay, last30DaysEnd: endOfDay } = dates;

@@ -9,9 +9,11 @@ import ReportRoutes from "./ReportRoutes.js";
 import AdminRoutes from "./AdminRoutes.js";
 import NotificationRoutes from "./NotificationRoutes.js";
 
+import authLimiter from "../middlewares/rateLimiter.js";
+
 const router = Router();
 
-router.use("/auth", AuthRoutes);
+router.use("/auth", authLimiter, AuthRoutes);
 router.use("/users", UserRoutes);
 router.use("/departments", DepartmentRoutes);
 router.use("/tasks", TaskRoutes);

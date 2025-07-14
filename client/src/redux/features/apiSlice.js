@@ -1,6 +1,5 @@
 import { createApi, fetchBaseQuery } from "@reduxjs/toolkit/query/react";
 import { setLogout, selectTokenVersion } from "./authSlice";
-import { toast } from "react-toastify";
 
 const SERVER_URL = import.meta.env.VITE_BACKEND_SERVER_URL;
 
@@ -20,30 +19,15 @@ const baseQueryWithReauth = async (args, api, extraOptions) => {
 
   // Handle token version mismatch (server should return 498)
   if (result?.error?.status === 498) {
-    api.dispatch(setLogout());
-    toast.error("Security session revoked. Please login again.", {
-      position: "bottom-right",
-      autoClose: 5000,
-    });
-    return result;
+    api.dispatch(setLogout("Security session revoked. Please login again."));
   }
-
   // Handle 401 Unauthorized
-  if (result?.error?.status === 401) {
-    const refreshResult = await baseQuery(
-      { url: "/auth/refresh", method: "POST" },
-      api,
-      extraOptions
-    );
-
+  else if (result?.error?.status === 401) {
+    const refreshResult = await baseQuery("/auth/refresh", api, extraOptions);
     if (refreshResult?.data) {
-      result = await baseQuery(args, api, extraOptions);
+      return await baseQuery(args, api, extraOptions);
     } else {
-      api.dispatch(setLogout());
-      toast.error("Session expired. Please login again.", {
-        position: "bottom-right",
-        autoClose: 5000,
-      });
+      api.dispatch(setLogout("Session expired. Please login again."));
     }
   }
 

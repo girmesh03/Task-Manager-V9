@@ -1,22 +1,11 @@
-// backend/mock/initializeDatabase.js
-// Purpose: Script to perform initial database setup, including optional data clearing
-// and creation of a default department and SuperAdmin user if they don't exist.
-// Interactions: Called once during server startup after DB connection is open. Interacts with models.
-// Edge Cases: Relies on environment variables. Contains potentially destructive delete operations
-// that are guarded by an environment variable. Handles checks for required env vars.
-// Dependencies: Department, User, Notification, TaskActivity, Task, RoutineTask models, process.env.
-// Refactor: Made data deletion conditional and explicit. Added checks for required env vars. Renamed from initializeSuperAdmin.js.
+import bcrypt from "bcrypt";
 import Department from "../models/DepartmentModel.js";
 import User from "../models/UserModel.js";
-import Notification from "../models/NotificationModel.js";
+import Task from "../models/TaskModel.js"; // base model for assigned and project task
 import TaskActivity from "../models/TaskActivityModel.js";
-import Task from "../models/TaskModel.js";
 import RoutineTask from "../models/RoutineTaskModel.js";
+import Notification from "../models/NotificationModel.js";
 
-/**
- * Creates the default 'Engineering' department if it doesn't exist.
- * @returns {Promise<mongoose.Document|null>} The created or existing department document, or null on failure.
- */
 const createDefaultDepartment = async () => {
   try {
     let department = await Department.findOne({ name: "Engineering" });
@@ -44,14 +33,6 @@ const createDefaultDepartment = async () => {
   }
 };
 
-/**
- * Creates the default SuperAdmin user if one doesn't exist globally
- * (or per department if that rule is enforced in the model validator).
- * Links the SuperAdmin to the default department as manager and member.
- * Relies on environment variables for user details.
- * @param {mongoose.Document} defaultDepartment - The default department document.
- * @returns {Promise<mongoose.Document|null>} The created or existing SuperAdmin user document, or null on failure or if department is missing.
- */
 const createDefaultSuperAdmin = async (defaultDepartment) => {
   if (!defaultDepartment) {
     console.error("Cannot create Super Admin: Default department is missing.");
@@ -63,8 +44,9 @@ const createDefaultSuperAdmin = async (defaultDepartment) => {
     "DEFAULT_SUPERADMIN_FIRST_NAME",
     "DEFAULT_SUPERADMIN_LAST_NAME",
     "DEFAULT_SUPERADMIN_POSITION",
+    "DEFAULT_SUPERADMIN_ROLE",
     "DEFAULT_SUPERADMIN_EMAIL",
-    "DEFAULT_SUPERADMIN_PASSWORD", // Note: This will be hashed by model middleware
+    "DEFAULT_SUPERADMIN_PASSWORD", // Note: This will be hashed below
   ];
   const missingEnv = requiredEnv.filter((envVar) => !process.env[envVar]);
 
@@ -81,24 +63,30 @@ const createDefaultSuperAdmin = async (defaultDepartment) => {
   }
 
   // Find if a SuperAdmin already exists (checking globally or per department based on model validation logic)
-  // Assuming model validation enforces the 'per department' rule from original code.
+  // Assuming model validation enforces the 'per company' rule from original code.
   let superAdmin = await User.findOne({
-    department: defaultDepartment._id,
+    // department: defaultDepartment._id, // If using per department validation
     role: "SuperAdmin", // Use the specific role string
   });
 
   if (!superAdmin) {
     console.log("Default Super Admin not found. Creating...");
     try {
-      // User.create handles password hashing via pre-save middleware
+      // HASH PASSWORD WITH BCRYPT (SALT ROUNDS: 12)
+      const hashedPassword = await bcrypt.hash(
+        process.env.DEFAULT_SUPERADMIN_PASSWORD,
+        12
+      );
+
+      // User.create handles other fields but we've manually handled password hashing
       const users = await User.insertMany([
         {
           firstName: process.env.DEFAULT_SUPERADMIN_FIRST_NAME,
           lastName: process.env.DEFAULT_SUPERADMIN_LAST_NAME,
           position: process.env.DEFAULT_SUPERADMIN_POSITION,
           email: process.env.DEFAULT_SUPERADMIN_EMAIL,
-          password: process.env.DEFAULT_SUPERADMIN_PASSWORD,
-          role: "SuperAdmin", // Assign the SuperAdmin role
+          password: hashedPassword, // Use hashed password instead of plaintext
+          role: process.env.DEFAULT_SUPERADMIN_ROLE,
           isVerified: true, // Mark SuperAdmin as verified by default
           isActive: true, // Mark SuperAdmin as active by default
           department: defaultDepartment._id, // Assign to the default department

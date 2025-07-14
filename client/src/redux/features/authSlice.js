@@ -32,10 +32,10 @@ export const setCredentials = createAsyncThunk(
 
 export const setLogout = createAsyncThunk(
   "auth/logout",
-  async (_, { rejectWithValue }) => {
+  async (message, { rejectWithValue }) => {
     try {
       await makeRequest.post("/auth/logout");
-      toast.success("Logged out successfully", {
+      toast.success(message || "Logged out successfully", {
         position: "bottom-right",
         autoClose: 3000,
       });

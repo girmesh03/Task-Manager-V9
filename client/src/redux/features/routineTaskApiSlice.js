@@ -3,9 +3,9 @@ import { apiSlice } from "./apiSlice";
 export const routineTaskApiSlice = apiSlice.injectEndpoints({
   endpoints: (builder) => ({
     getRoutineTasks: builder.query({
-      query: ({ departmentId, page = 1, limit = 10 }) => ({
+      query: ({ departmentId, page = 1, limit = 10, currentDate }) => ({
         url: `/routine-tasks/department/${departmentId}`,
-        params: { page, limit },
+        params: { page, limit, currentDate },
       }),
       transformResponse: (response) => ({
         tasks: response.tasks,
@@ -37,6 +37,7 @@ export const routineTaskApiSlice = apiSlice.injectEndpoints({
         body: task,
       }),
       invalidatesTags: (result, error, { departmentId }) => [
+        { type: "Department", id: departmentId },
         { type: "RoutineTask", id: `DEPARTMENT-${departmentId}` },
         { type: "Statistics", id: `DEPARTMENT-${departmentId}` },
       ],

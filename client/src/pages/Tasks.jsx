@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Navigate } from "react-router";
+import { Navigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 
 import Container from "@mui/material/Container";
@@ -7,7 +7,7 @@ import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import Pagination from "@mui/material/Pagination";
 import Button from "@mui/material/Button";
-import Grid from "@mui/material/Grid2";
+import Grid from "@mui/material/Grid";
 import Box from "@mui/material/Box";
 import AddIcon from "@mui/icons-material/Add";
 
@@ -70,8 +70,8 @@ const Tasks = () => {
       status: state.status,
       limit: 10,
       currentDate: selectedDate,
-    }
-    // { refetchOnMountOrArgChange: true }
+    },
+    { refetchOnMountOrArgChange: true }
   );
 
   const { tasks = [], pagination: { totalPages = 1 } = {} } = data;

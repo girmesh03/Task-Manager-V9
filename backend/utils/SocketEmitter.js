@@ -1,56 +1,65 @@
-import { io } from "../server.js";
+import { getIO } from "./SocketInstance.js";
 import User from "../models/UserModel.js";
-import CustomError from "../errorHandler/CustomError.js";
-
-const getSocketRoom = (roomId) => `room:${roomId}`;
 
 export const emitToUser = (userId, event, data) => {
-  if (!io || !userId) return false;
-
   try {
-    io.to(getSocketRoom(userId.toString())).emit(event, data);
+    const io = getIO();
+    io.to(userId.toString()).emit(event, data);
     return true;
-  } catch (error) {
-    console.error(`Emit to user ${userId} failed:`, error);
+  } catch (err) {
+    console.error(`Emit to user failed: ${err.message}`);
     return false;
   }
 };
 
 export const emitToManagers = async (departmentId, event, data) => {
-  if (!io) return false;
-
   try {
-    const managerSockets = await User.aggregate([
-      {
-        $match: {
-          department: departmentId,
-          role: { $in: ["Manager", "Admin", "SuperAdmin"] },
-        },
-      },
-      {
-        $project: { socketRoom: { $concat: ["room:", { $toString: "$_id" }] } },
-      },
-    ]);
-
-    managerSockets.forEach(({ socketRoom }) => {
-      io.to(socketRoom).emit(event, data);
-    });
-
+    const io = getIO();
+    const deptIdStr = departmentId.toString();
+    io.to(`dept_managers_${deptIdStr}`).emit(event, data);
     return true;
-  } catch (error) {
-    console.error("Emit to managers failed:", error);
+  } catch (err) {
+    console.error(`Emit to managers failed: ${err.message}`);
     return false;
   }
 };
 
-export const emitToDepartment = (departmentId, event, data) => {
-  if (!io) return false;
-
+export const emitToDepartment = async (departmentId, event, data) => {
   try {
-    io.to(getSocketRoom(`dept:${departmentId}`)).emit(event, data);
+    const io = getIO();
+    const deptIdStr = departmentId.toString();
+    io.to(`department_${deptIdStr}`).emit(event, data);
     return true;
-  } catch (error) {
-    console.error(`Emit to department ${departmentId} failed:`, error);
+  } catch (err) {
+    console.error(`Emit to department failed: ${err.message}`);
     return false;
+  }
+};
+
+export const joinDepartmentRooms = async (userId) => {
+  try {
+    const io = getIO();
+    const userIdStr = userId.toString();
+    const sockets = await io.fetchSockets();
+    const socket = sockets.find((s) => s.user?._id.toString() === userIdStr);
+
+    if (!socket) {
+      console.warn(`Socket not found for user: ${userIdStr}`);
+      return;
+    }
+
+    const user = await User.findById(userIdStr).select("department role");
+    if (!user?.department) return;
+
+    socket.join(userIdStr);
+    const deptIdStr = user.department.toString();
+
+    socket.join(`department_${deptIdStr}`);
+
+    if (["Manager", "Admin", "SuperAdmin"].includes(user.role)) {
+      socket.join(`dept_managers_${deptIdStr}`);
+    }
+  } catch (error) {
+    console.error("Socket room join error:", error.message);
   }
 };

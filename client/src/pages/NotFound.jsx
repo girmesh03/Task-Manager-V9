@@ -1,4 +1,4 @@
-import { useNavigate } from "react-router";
+import { useNavigate } from "react-router-dom";
 import { Box, Button, Stack, Typography } from "@mui/material";
 import GobackIcon from "@mui/icons-material/FirstPageOutlined";
 import HomeIcon from "@mui/icons-material/HomeOutlined";

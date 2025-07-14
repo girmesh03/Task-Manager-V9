@@ -1,10 +1,9 @@
 import asyncHandler from "express-async-handler";
-import dayjs from "dayjs";
 import CustomError from "../errorHandler/CustomError.js";
 import Notification from "../models/NotificationModel.js";
 
 import { emitToUser } from "../utils/SocketEmitter.js";
-import { getFormattedDate } from "../utils/GetDateIntervals.js";
+import { customDayjs } from "../utils/GetDateIntervals.js";
 
 // @desc    Get user notifications stats (unread count)
 // @route   GET /api/notifications/stats
@@ -106,10 +105,8 @@ const markAllAsRead = asyncHandler(async (req, res, next) => {
 // @route   DELETE /api/notifications/clear
 // @access  Private
 const clearNotifications = asyncHandler(async (req, res, next) => {
-  const thirtyDaysAgo = getFormattedDate(
-    dayjs().subtract(30, "days"),
-    "YYYY-MM-DD"
-  );
+  // const thirtyDaysAgo = customDayjs().utc(true).tz(TZ).subtract(30, "days").toDate();
+  const thirtyDaysAgo = customDayjs().subtract(30, "days").toDate();
 
   // Delete all notifications older than 30 days
   await Notification.deleteMany({

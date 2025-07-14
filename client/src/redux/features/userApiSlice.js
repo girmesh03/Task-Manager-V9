@@ -26,10 +26,10 @@ export const userApiSlice = apiSlice.injectEndpoints({
       }),
       transformResponse: (response) => {
         return {
-          rows: response.rows || [],
-          page: response.page,
-          pageSize: response.pageSize,
-          rowCount: response.rowCount,
+          rows: response.data.rows || [],
+          page: response.data.page,
+          pageSize: response.data.pageSize,
+          rowCount: response.data.rowCount,
         };
       },
       providesTags: (result, error, { departmentId }) => [

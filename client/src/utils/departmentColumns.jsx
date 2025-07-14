@@ -1,6 +1,4 @@
 import Avatar from "@mui/material/Avatar";
-import Box from "@mui/material/Box";
-import Chip from "@mui/material/Chip";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import Stack from "@mui/material/Stack";
@@ -125,22 +123,6 @@ export const DepartmentColumns = [
         </AvatarGroup>
       );
     },
-  },
-  {
-    field: "taskCount",
-    headerName: "Tasks",
-    flex: 0.7,
-    minWidth: 80,
-    align: "center",
-    headerAlign: "center",
-    renderCell: (params) => (
-      <Chip
-        label={params.value || 0}
-        color={params.value > 0 ? "primary" : "default"}
-        size="small"
-        variant="outlined"
-      />
-    ),
   },
   {
     field: "createdAt",
