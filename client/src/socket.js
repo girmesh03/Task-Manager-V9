@@ -17,7 +17,7 @@ function initSocket() {
     transports: ["polling", "websocket"], // try polling first, then websocket
     reconnectionAttempts: 5,
     reconnectionDelay: 3000,
-    path: "/api/socket.io", // adjust if your server uses a custom path
+    path: "http://localhost:4000/api/socket.io", // adjust if your server uses a custom path
   });
 
   // debug listeners
