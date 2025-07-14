@@ -15,25 +15,13 @@ const projectTaskSchema = new mongoose.Schema(
         trim: true,
         minlength: [10, "Phone number must be at least 10 characters"],
         maxlength: [13, "Phone number cannot exceed 13 characters"],
-        match: [/^[0-9+\-\s()]+$/, "Invalid phone number format"],
+        match: [/^\+?[0-9\s]{10,13}$/, "Invalid phone number"],
       },
       address: {
         type: String,
         trim: true,
       },
     },
-    proforma: [
-      {
-        url: { type: String, required: true },
-        public_id: { type: String, required: true },
-        name: { type: String, required: true },
-        type: {
-          type: String,
-          enum: ["image", "document", "invoice", "pdf"],
-          default: "document",
-        },
-      },
-    ],
   },
   {
     toJSON: Task.schema.options.toJSON,
@@ -41,12 +29,4 @@ const projectTaskSchema = new mongoose.Schema(
   }
 );
 
-// Add text index for searchable fields
-projectTaskSchema.index({
-  "companyInfo.name": "text",
-  "companyInfo.address": "text",
-});
-
-const ProjectTask = Task.discriminator("ProjectTask", projectTaskSchema);
-
-export default ProjectTask;
+export default Task.discriminator("ProjectTask", projectTaskSchema);

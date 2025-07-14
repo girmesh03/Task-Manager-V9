@@ -1,71 +1,50 @@
+// backend/middlewares/authMiddleware.js
 import mongoose from "mongoose";
 import jwt from "jsonwebtoken";
 import User from "../models/UserModel.js";
 import CustomError from "../errorHandler/CustomError.js";
 
-const ROLE_HIERARCHY = {
-  User: 1,
-  Manager: 2,
-  Admin: 3,
-  SuperAdmin: 4,
-};
-
 export const verifyJWT = (req, res, next) => {
   const token = req.cookies.access_token;
 
   if (!token) {
-    return next(
-      new CustomError("Unauthorized: No token provided", 401, "AUTH-401")
-    );
+    return next(new CustomError("Authorization token required", 401));
   }
 
   jwt.verify(token, process.env.JWT_ACCESS_SECRET, async (err, decoded) => {
     if (err) {
-      const errorType =
-        err.name === "TokenExpiredError"
-          ? new CustomError("Token expired", 401, "AUTH-401")
-          : new CustomError("Invalid token", 401, "AUTH-401");
-      return next(errorType);
+      return next(new CustomError(`${err.message}`, 401));
     }
 
     try {
-      const user = await User.findById(decoded._id);
+      const user = await User.findById(decoded._id).select(
+        "+isVerified +isActive +tokenVersion"
+      );
       if (!user) {
-        return next(new CustomError("User not found", 404, "USER-404"));
+        return next(new CustomError("User account not found", 404));
       }
 
       if (!user.isVerified || !user.isActive) {
-        return next(
-          new CustomError(
-            "Account not verified or inactive",
-            403,
-            "ACCOUNT-403"
-          )
-        );
+        return next(new CustomError("Account not activated or suspended", 403));
       }
 
-      req.user = {
-        _id: user._id,
-        role: user.role,
-        department: user.department,
-      };
+      if (user.tokenVersion !== decoded.tokenVersion) {
+        return next(new CustomError("Session expired", 401));
+      }
+
+      req.user = decoded;
       next();
     } catch (error) {
-      next(new CustomError("Authentication failed", 500, "AUTH-500"));
+      next(error);
     }
   });
 };
 
-export const authorizeRoles = (...requiredRoles) => {
+export const authorizeRoles = (...roles) => {
   return (req, res, next) => {
-    const userRoleLevel = ROLE_HIERARCHY[req.user.role];
-    const requiredLevel = Math.max(
-      ...requiredRoles.map((role) => ROLE_HIERARCHY[role])
-    );
-
-    if (userRoleLevel < requiredLevel) {
+    if (!roles.includes(req.user.role)) {
       return next(
-        new CustomError("Insufficient permissions", 403, "PERMISSION-403")
+        new CustomError("Insufficient permissions for this action", 403)
       );
     }
     next();
@@ -73,22 +52,23 @@ export const authorizeRoles = (...requiredRoles) => {
 };
 
 export const verifyDepartmentAccess = async (req, res, next) => {
+  const { departmentId } = req.params;
+  const userId = req.user._id;
+
   try {
-    const { departmentId } = req.params;
-    const userId = req.user._id;
+    const user = await User.findById(userId).select("department role");
+    if (!user) throw new CustomError("User account not found", 404);
 
     // SuperAdmin bypass
-    if (req.user.role === "SuperAdmin") return next();
+    if (user.role === "SuperAdmin") return next();
 
-    // Validate department ID format
-    if (!mongoose.Types.ObjectId.isValid(departmentId)) {
-      throw new CustomError("Invalid department ID", 400, "DEPT-400");
-    }
+    const department = await mongoose
+      .model("Department")
+      .exists({ _id: departmentId });
+    if (!department) throw new CustomError("Department not found", 404);
 
-    // Check user-department association
-    const user = await User.findById(userId).select("department");
     if (!user.department.equals(departmentId)) {
-      throw new CustomError("Department access denied", 403, "DEPT-403");
+      throw new CustomError("Department access denied", 403);
     }
     next();
   } catch (error) {

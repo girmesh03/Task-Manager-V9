@@ -3,7 +3,7 @@ import { Navigate } from "react-router";
 import PropTypes from "prop-types";
 
 import Container from "@mui/material/Container";
-import Grid from "@mui/material/Grid2";
+import Grid from "@mui/material/Grid";
 
 import { useSelector } from "react-redux";
 import { useGetTaskReportsQuery } from "../redux/features/reportApiSlice";
@@ -34,14 +34,17 @@ const TaskReportGrid = ({ departmentId }) => {
     isLoading,
     isFetching,
     // isSuccess,
-  } = useGetTaskReportsQuery({
-    departmentId,
-    page: paginationModel.page + 1, // API might be 1-indexed for page
-    limit: paginationModel.pageSize,
-    currentDate: selectedDate,
-    // status: "",
-    // taskType: "",
-  });
+  } = useGetTaskReportsQuery(
+    {
+      departmentId,
+      page: paginationModel.page + 1, // API might be 1-indexed for page
+      limit: paginationModel.pageSize,
+      currentDate: selectedDate,
+      // status: "",
+      // taskType: "",
+    },
+    { refetchOnMountOrArgChange: true }
+  );
 
   const handlePaginationModelChange = useCallback((newModel) => {
     setPaginationModel(newModel);

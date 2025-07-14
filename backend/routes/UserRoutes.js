@@ -31,7 +31,7 @@ router.use(verifyJWT); // Apply JWT to all following routes
 // Create a new user
 router.post(
   "/department/:departmentId",
-  authorizeRoles("SuperAdmin", "Admin"),
+  authorizeRoles("SuperAdmin"),
   verifyDepartmentAccess,
   createUser
 );
@@ -45,7 +45,6 @@ router.get(
 );
 
 // Get a user by ID in a department
-// TODO: authorizeRoles:who can access this endpoint?
 router.get(
   "/department/:departmentId/user/:userId",
   authorizeRoles("SuperAdmin", "Admin", "Manager", "User"),

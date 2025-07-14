@@ -1,8 +1,7 @@
 import mongoose from "mongoose";
 import mongoosePaginate from "mongoose-paginate-v2";
-import { getFormattedDate } from "../utils/GetDateIntervals.js";
+import { customDayjs } from "../utils/GetDateIntervals.js";
 import { deleteFromCloudinary } from "../utils/cloudinaryHelper.js";
-import CustomError from "../errorHandler/CustomError.js";
 
 const taskSchema = new mongoose.Schema(
   {
@@ -11,7 +10,6 @@ const taskSchema = new mongoose.Schema(
       required: [true, "Task title is required"],
       trim: true,
       maxlength: [100, "Title cannot exceed 100 characters"],
-      index: true,
     },
     description: {
       type: String,
@@ -22,16 +20,38 @@ const taskSchema = new mongoose.Schema(
       type: String,
       enum: ["To Do", "In Progress", "Completed", "Pending"],
       default: "To Do",
-      index: true,
+    },
+    location: {
+      type: String,
+      trim: true,
+      maxlength: [100, "Location cannot exceed 100 characters"],
     },
     dueDate: {
       type: Date,
       required: true,
       validate: {
         validator: function (value) {
-          return dayjs(value).isAfter(dayjs().subtract(1, "day"));
+          const due = customDayjs(value);
+          const now = customDayjs();
+
+          if (this.isNew) {
+            // For new documents: due date must be in future
+            if (!due.isAfter(now)) {
+              throw new Error("Due date must be in the future.");
+            }
+          } else {
+            // For existing documents: due date must be after createdAt
+            if (!due.isSameOrAfter(this.createdAt)) {
+              throw new Error(
+                "Due date must be on or after task creation date."
+              );
+            }
+          }
+          return true;
         },
-        message: "Due date must be in the future",
+        message: function (props) {
+          return props.reason.message; // Forward thrown error message
+        },
       },
     },
     priority: {
@@ -43,12 +63,18 @@ const taskSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: true,
+      validate: {
+        validator: async function (userId) {
+          const user = await mongoose.model("User").findById(userId);
+          return user?.department?.equals(this.department);
+        },
+        message: "Creator must belong to task department",
+      },
     },
     department: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Department",
-      required: [true, "Department is required"],
-      index: true,
+      required: true,
     },
   },
   {
@@ -56,17 +82,13 @@ const taskSchema = new mongoose.Schema(
     timestamps: true,
     versionKey: false,
     toJSON: {
-      transform: function (doc, ret) {
-        ret.createdAt = getFormattedDate(ret.createdAt, 0);
-        ret.updatedAt = getFormattedDate(ret.updatedAt, 0);
+      transform: (doc, ret) => {
         delete ret.id;
         return ret;
       },
     },
     toObject: {
-      transform: function (doc, ret) {
-        ret.createdAt = getFormattedDate(ret.createdAt, 0);
-        ret.updatedAt = getFormattedDate(ret.updatedAt, 0);
+      transform: (doc, ret) => {
         delete ret.id;
         return ret;
       },
@@ -74,7 +96,7 @@ const taskSchema = new mongoose.Schema(
   }
 );
 
-// Virtuals
+// Virtual for task activities (reverse populate)
 taskSchema.virtual("activities", {
   ref: "TaskActivity",
   localField: "_id",
@@ -84,48 +106,60 @@ taskSchema.virtual("activities", {
 
 // Indexes
 taskSchema.index({ status: 1, department: 1 });
-taskSchema.index({ createdBy: 1 });
-
-// Plugins
 taskSchema.plugin(mongoosePaginate);
 
-// Pre-delete Hook
+// Auto-update status when activities exist
+taskSchema.pre("save", async function (next) {
+  if (this.status === "To Do" && this.isModified("status")) {
+    const activityCount = await mongoose
+      .model("TaskActivity")
+      .countDocuments({ task: this._id });
+    if (activityCount > 0) this.status = "In Progress";
+  }
+  next();
+});
+
+// Cascade delete notifications
 taskSchema.pre("deleteOne", { document: true }, async function (next) {
   const session = this.$session();
-  const taskId = this._id;
-
   try {
-    // Delete project files if applicable
-    if (this.taskType === "ProjectTask" && this.proforma?.length > 0) {
-      const publicIds = this.proforma.map((p) => p.public_id).filter(Boolean);
-      if (publicIds.length > 0) {
-        await deleteFromCloudinary(publicIds);
-      }
+    // 1. Fetch all related TaskActivities
+    const activities = await mongoose
+      .model("TaskActivity")
+      .find({ task: this._id })
+      .session(session);
+
+    // 2. Delete Cloudinary attachments from TaskActivities
+    const activityAttachmentIds = activities.flatMap((activity) =>
+      activity.attachments.map((a) => a.public_id)
+    );
+
+    if (activityAttachmentIds.length > 0) {
+      await deleteFromCloudinary(activityAttachmentIds, "raw");
     }
 
-    // Delete related activities
-    await mongoose
-      .model("TaskActivity")
-      .deleteMany({ task: taskId })
-      .session(session);
+    // 3. Bulk delete TaskActivities and their notifications
+    await Promise.all([
+      mongoose
+        .model("TaskActivity")
+        .deleteMany({ task: this._id })
+        .session(session),
 
-    // Delete notifications
-    await mongoose
-      .model("Notification")
-      .deleteMany({
-        $or: [
-          { task: taskId },
-          { linkedDocument: taskId, linkedDocumentType: "Task" },
-        ],
-      })
-      .session(session);
+      mongoose
+        .model("Notification")
+        .deleteMany({
+          $or: [
+            { task: this._id },
+            { linkedDocument: this._id, linkedDocumentType: "Task" },
+          ],
+        })
+        .session(session),
+    ]);
 
     next();
   } catch (err) {
-    next(new CustomError("Task deletion failed", 500, "TASK-500"));
+    next(new CustomError("Task deletion failed", 500));
   }
 });
 
-const Task = mongoose.model("Task", taskSchema);
-
-export default Task;
+export default mongoose.model("Task", taskSchema);

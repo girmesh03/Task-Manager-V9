@@ -40,14 +40,14 @@ const ProfilePictureUploader = () => {
       const { secure_url, public_id } = data;
 
       // 2) Send URL to your API
-      const updatedUser = await updateProfilePicture({
+      const { user, message } = await updateProfilePicture({
         userId: currentUser._id,
         pictureData: { url: secure_url, public_id },
       }).unwrap();
 
       // 3) Sync Redux state
-      dispatch(setProfilePicture(updatedUser.profilePicture));
-      toast.success("Profile picture updated!");
+      dispatch(setProfilePicture(user.profilePicture));
+      toast.success(message || "Profile picture updated!");
     } catch (err) {
       console.error(err);
       toast.error("Upload failed. Please try again.");

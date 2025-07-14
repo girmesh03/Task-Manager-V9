@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { Navigate } from "react-router";
+import { Navigate } from "react-router-dom";
 
 import Container from "@mui/material/Container";
-import Grid from "@mui/material/Grid2";
+import Grid from "@mui/material/Grid";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import Pagination from "@mui/material/Pagination";
@@ -12,6 +12,7 @@ import AddIcon from "@mui/icons-material/Add";
 import { useSelector } from "react-redux";
 import { useGetRoutineTasksQuery } from "../redux/features/routineTaskApiSlice";
 import { selectSelectedDepartmentId } from "../redux/features/authSlice";
+import { selectFilters } from "../redux/features/filtersSlice";
 
 import RoutineTaskList from "../components/RoutineTaskList";
 import CreateUpdateRoutineTask from "../components/CreateUpdateRoutineTask";
@@ -22,6 +23,8 @@ import {
 
 const RoutineTasks = () => {
   const departmentId = useSelector(selectSelectedDepartmentId);
+  const filters = useSelector(selectFilters);
+  const { selectedDate } = filters;
 
   const [state, setState] = useState({
     isDialogOpen: false,
@@ -41,8 +44,9 @@ const RoutineTasks = () => {
       departmentId,
       page: state.page,
       limit: 10,
-    }
-    // { refetchOnMountOrArgChange: true }
+      currentDate: selectedDate,
+    },
+    { refetchOnMountOrArgChange: true }
   );
 
   const { tasks = [], pagination: { totalPages = 1 } = {} } = data;

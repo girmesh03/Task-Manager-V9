@@ -1,8 +1,8 @@
 import { useCallback, memo, useMemo, useState } from "react";
-import { Navigate } from "react-router";
+import { Navigate } from "react-router-dom";
 import { toast } from "react-toastify";
 
-import Grid from "@mui/material/Grid2";
+import Grid from "@mui/material/Grid";
 
 import { useSelector } from "react-redux";
 import { selectSelectedDepartmentId } from "../../redux/features/authSlice";
@@ -40,12 +40,17 @@ const UsersSection = memo(() => {
     isLoading,
     isFetching,
     // isSuccess,
-  } = useGetUsersQuery({
-    departmentId,
-    page: paginationModel.page + 1, // API might be 1-indexed for page
-    limit: paginationModel.pageSize,
-    currentDate: selectedDate,
-  });
+  } = useGetUsersQuery(
+    {
+      departmentId,
+      page: paginationModel.page + 1, // API might be 1-indexed for page
+      limit: paginationModel.pageSize,
+      currentDate: selectedDate,
+    },
+    {
+      refetchOnMountOrArgChange: true,
+    }
+  );
 
   const handlePaginationModelChange = useCallback((newModel) => {
     setPaginationModel(newModel);

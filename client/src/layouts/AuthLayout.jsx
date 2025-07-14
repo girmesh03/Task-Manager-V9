@@ -1,10 +1,10 @@
 import { useState, Suspense } from "react";
-import { Link, Navigate, Outlet, useLocation } from "react-router";
+import { Link, Navigate, Outlet, useLocation } from "react-router-dom";
 import { toast } from "react-toastify";
 
 import Box from "@mui/material/Box";
 import Stack from "@mui/material/Stack";
-import useTheme from "@mui/material/styles/useTheme";
+import { useTheme } from "@mui/material/styles";
 import useMediaQuery from "@mui/material/useMediaQuery";
 import Button from "@mui/material/Button";
 import IconButton from "@mui/material/IconButton";

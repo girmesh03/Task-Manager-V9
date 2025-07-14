@@ -1,6 +1,5 @@
 import mongoose from "mongoose";
 import mongoosePaginate from "mongoose-paginate-v2";
-import { getFormattedDate } from "../utils/GetDateIntervals.js";
 import CustomError from "../errorHandler/CustomError.js";
 
 const departmentSchema = new mongoose.Schema(
@@ -8,39 +7,30 @@ const departmentSchema = new mongoose.Schema(
     name: {
       type: String,
       required: [true, "Department name is required"],
-      // unique: true,
+      unique: true,
       trim: true,
       minlength: [2, "Department name must be at least 2 characters"],
-      set: (value) =>
-        value.toLowerCase().replace(/\b\w/g, (char) => char.toUpperCase()),
     },
     description: {
       type: String,
       trim: true,
       maxlength: [300, "Description cannot exceed 300 characters"],
-      set: (value) =>
-        value
-          .toLowerCase()
-          .replace(/(^\w|\.\s*\w)/g, (match) => match.toUpperCase()),
     },
     managers: {
-      type: [
-        {
-          type: mongoose.Schema.Types.ObjectId,
-          ref: "User",
-          validate: {
-            validator: async function (userId) {
-              const user = await mongoose.model("User").findById(userId).lean();
-              return (
-                user?.department?.toString() === this._id.toString() &&
-                ["Manager", "Admin", "SuperAdmin"].includes(user.role)
-              );
-            },
-            message: "User must belong to department and have Manager+ role",
-          },
-        },
-      ],
+      type: [mongoose.Schema.Types.ObjectId],
+      ref: "User",
       default: [],
+      validate: {
+        validator: async function (managerIds) {
+          const managers = await mongoose.model("User").find({
+            _id: { $in: managerIds },
+            role: { $in: ["Manager", "Admin", "SuperAdmin"] },
+            department: this._id,
+          });
+          return managers.length === managerIds.length;
+        },
+        message: "All managers must belong to department with Manager+ role",
+      },
     },
   },
   {
@@ -48,18 +38,14 @@ const departmentSchema = new mongoose.Schema(
     versionKey: false,
     toJSON: {
       virtuals: true,
-      transform: function (doc, ret) {
-        ret.createdAt = getFormattedDate(ret.createdAt, 0);
-        ret.updatedAt = getFormattedDate(ret.updatedAt, 0);
+      transform: (doc, ret) => {
         delete ret.id;
         return ret;
       },
     },
     toObject: {
       virtuals: true,
-      transform: function (doc, ret) {
-        ret.createdAt = getFormattedDate(ret.createdAt, 0);
-        ret.updatedAt = getFormattedDate(ret.updatedAt, 0);
+      transform: (doc, ret) => {
         delete ret.id;
         return ret;
       },
@@ -67,14 +53,7 @@ const departmentSchema = new mongoose.Schema(
   }
 );
 
-// Indexes
-departmentSchema.index({ managers: 1 });
-departmentSchema.index(
-  { name: 1 },
-  { collation: { locale: "en", strength: 2 } }
-);
-
-// Virtuals
+// Virtual for member count
 departmentSchema.virtual("memberCount", {
   ref: "User",
   localField: "_id",
@@ -82,49 +61,99 @@ departmentSchema.virtual("memberCount", {
   count: true,
 });
 
-// Plugins
-departmentSchema.plugin(mongoosePaginate);
+// Format name/description on save
+departmentSchema.pre("save", function (next) {
+  const capitalize = (str) =>
+    str.toLowerCase().replace(/\b\w/g, (char) => char.toUpperCase());
 
-// Pre-delete Hook
+  if (this.isModified("name")) {
+    this.name = capitalize(this.name);
+  }
+
+  if (this.isModified("description") && this.description) {
+    this.description = this.description
+      .toLowerCase()
+      .replace(/(^\w|\.\s*\w)/g, (match) => match.toUpperCase());
+  }
+
+  next();
+});
+
+// Prevent deletion if only SuperAdmin exists in department
+departmentSchema.pre("deleteOne", { document: true }, async function (next) {
+  // Check for SuperAdmins in this department
+  const deptSuperAdmins = await mongoose.model("User").countDocuments({
+    department: this._id,
+    role: "SuperAdmin",
+  });
+
+  // Check total SuperAdmins in system
+  const totalSuperAdmins = await mongoose.model("User").countDocuments({
+    role: "SuperAdmin",
+  });
+
+  if (deptSuperAdmins > 0 && totalSuperAdmins === deptSuperAdmins) {
+    return next(
+      new CustomError(
+        "Cannot delete department containing the only SuperAdmin",
+        400
+      )
+    );
+  }
+
+  next();
+});
+
+// Cascade deletion
 departmentSchema.pre("deleteOne", { document: true }, async function (next) {
   const session = this.$session();
   const departmentId = this._id;
 
   try {
-    // Delete users and their dependencies
-    const users = await mongoose
-      .model("User")
-      .find({ department: departmentId })
-      .session(session);
+    // 1. Fetch all dependent documents
+    const [users, tasks, routineTasks] = await Promise.all([
+      mongoose
+        .model("User")
+        .find({ department: departmentId })
+        .session(session),
+      mongoose
+        .model("Task")
+        .find({ department: departmentId })
+        .session(session),
+      mongoose
+        .model("RoutineTask")
+        .find({ department: departmentId })
+        .session(session),
+    ]);
 
-    for (const user of users) {
-      await user.deleteOne({ session });
-    }
+    // 2. Execute parallel deletions
+    await Promise.all([
+      // Delete users (triggers their pre-delete hooks)
+      ...users.map((user) => user.deleteOne({ session })),
 
-    // Delete tasks
-    await mongoose
-      .model("Task")
-      .deleteMany({ department: departmentId })
-      .session(session);
+      // Delete tasks (triggers task cascade)
+      ...tasks.map((task) => task.deleteOne({ session })),
 
-    // Delete routine tasks
-    await mongoose
-      .model("RoutineTask")
-      .deleteMany({ department: departmentId })
-      .session(session);
+      // Delete routine tasks
+      ...routineTasks.map((rt) => rt.deleteOne({ session })),
 
-    // Delete notifications
-    await mongoose
-      .model("Notification")
-      .deleteMany({ department: departmentId })
-      .session(session);
+      // Delete department-specific notifications
+      mongoose
+        .model("Notification")
+        .deleteMany({
+          $or: [
+            { department: departmentId },
+            { "linkedDocument.department": departmentId },
+          ],
+        })
+        .session(session),
+    ]);
 
     next();
   } catch (err) {
-    next(new CustomError("Department deletion failed", 500, "DEPT-500"));
+    next(new CustomError("Department deletion failed", 500));
   }
 });
 
-const Department = mongoose.model("Department", departmentSchema);
-
-export default Department;
+departmentSchema.plugin(mongoosePaginate);
+export default mongoose.model("Department", departmentSchema);

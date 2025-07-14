@@ -1,76 +1,73 @@
+// src/socket.js
 import { io } from "socket.io-client";
-import { store } from "./redux/app/store";
 
-// Retrieve Socket URL from environment variables
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL;
 
 let socket = null;
 
-export const connectSocket = () => {
-  // Prevent multiple connections
-  if (socket && socket.connected) {
-    console.log("Socket already connected.");
-    return socket;
-  }
+/**
+ * Initialize the singleton Socket.IO client (but don’t connect yet).
+ */
+function initSocket() {
+  if (socket) return socket;
 
-  // The server's socket middleware will verify the httpOnly cookie sent by the browser.
-  const isAuthenticated = store.getState().auth.isAuthenticated;
-
-  if (!isAuthenticated) {
-    console.log("User not authenticated, socket connection not initiated.");
-    return null;
-  }
-
-  console.log(`Attempting to connect socket to ${SOCKET_URL}`);
-
-  // Connect, ensuring cookies are sent
   socket = io(SOCKET_URL, {
-    withCredentials: true, // IMPORTANT: This sends cookies with the connection request
+    autoConnect: false,
+    withCredentials: true,
+    transports: ["polling", "websocket"], // try polling first, then websocket
     reconnectionAttempts: 5,
     reconnectionDelay: 3000,
+    path: "/api/socket.io", // adjust if your server uses a custom path
   });
 
-  // These generic listeners are useful for debugging the connection itself.
-  // Specific application event listeners are handled in AppLayout.jsx.
-  socket.on("connect", () => {
-    console.log(`Socket connected successfully with ID: ${socket.id}`);
-  });
-
-  socket.on("disconnect", (reason) => {
-    console.log(`Socket disconnected: ${reason}`);
-    if (reason === "io server disconnect") {
-      console.warn("Socket disconnected by server, potential auth issue.");
-    }
-  });
-
-  socket.on("connect_error", (error) => {
-    console.error(`Socket connection error: ${error.message}`, error);
-    if (error.message.includes("Authentication error")) {
-      console.error("Socket authentication failed. Check credentials/cookie.");
-    }
-  });
+  // debug listeners
+  socket.on("connect", () =>
+    console.log(`⚡ Socket connected (id=${socket.id})`)
+  );
+  socket.on("disconnect", (reason) =>
+    console.log(`⚡ Socket disconnected (${reason})`)
+  );
+  socket.on("connect_error", (err) =>
+    console.error("⚡ Socket connection error:", err.message)
+  );
 
   return socket;
-};
+}
 
-export const disconnectSocket = () => {
-  if (socket && socket.connected) {
-    console.log("Disconnecting socket...");
-    // Remove all listeners before disconnecting to prevent memory leaks
-    socket.off();
-    socket.disconnect();
+/**
+ * Actually open the connection (if not already).
+ */
+export function connectSocket() {
+  const s = initSocket();
+  if (s.connected) {
+    console.log("Socket already connected.");
+  } else {
+    console.log("⚡ connecting socket…");
+    s.connect();
   }
-  socket = null; // Clear the instance
-};
+  return s;
+}
 
-// A general utility to emit an event from the client, if ever needed.
-export const emitSocketEvent = (eventName, data) => {
+/**
+ * Cleanly tear it down.
+ */
+export function disconnectSocket() {
+  if (!socket) return;
+  console.log("⚡ disconnecting socket…");
+  socket.off(); // remove all listeners
+  socket.disconnect();
+  socket = null;
+}
+
+/**
+ * Helper to emit custom events.
+ */
+export function emitSocketEvent(eventName, data) {
   if (socket && socket.connected) {
     socket.emit(eventName, data);
   } else {
-    console.warn("Socket not connected, cannot emit event:", eventName);
+    console.warn("Socket not connected:", eventName);
   }
-};
+}
 
-// Export the socket instance directly for use in the AppLayout listeners.
 export { socket };

@@ -332,7 +332,7 @@ export const UserColumns = [
     field: "status",
     headerName: "Status",
     flex: 1,
-    minWidth: 180,
+    minWidth: 200,
     type: "singleSelect",
     valueOptions: ["Active", "Inactive"],
     headerAlign: "center",

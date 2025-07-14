@@ -9,7 +9,7 @@ import Avatar from "@mui/material/Avatar";
 import AvatarGroup from "@mui/material/AvatarGroup";
 import Chip from "@mui/material/Chip";
 import Stack from "@mui/material/Stack";
-import Grid from "@mui/material/Grid2";
+import Grid from "@mui/material/Grid";
 import Box from "@mui/material/Box";
 import Link from "@mui/material/Link";
 import Tooltip from "@mui/material/Tooltip";

@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import { Outlet } from "react-router";
+import { Outlet } from "react-router-dom";
 
 import Box from "@mui/material/Box";
 

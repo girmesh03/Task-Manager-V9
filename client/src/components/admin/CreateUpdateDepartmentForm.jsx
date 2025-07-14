@@ -1,10 +1,10 @@
 import { memo, useEffect } from "react";
 import PropTypes from "prop-types";
-import { Navigate } from "react-router";
+import { Navigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { toast } from "react-toastify";
 
-import Grid from "@mui/material/Grid2";
+import Grid from "@mui/material/Grid";
 import FormControl from "@mui/material/FormControl";
 import FormLabel from "@mui/material/FormLabel";
 import Stack from "@mui/material/Stack";

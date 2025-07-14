@@ -10,7 +10,7 @@ import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import Button from "@mui/material/Button";
 import Divider from "@mui/material/Divider";
-import Grid from "@mui/material/Grid2";
+import Grid from "@mui/material/Grid";
 
 import { useCreateTaskActivityMutation } from "../redux/features/taskApiSlice";
 

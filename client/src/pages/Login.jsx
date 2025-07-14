@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { useNavigate, useLocation } from "react-router";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { toast } from "react-toastify";
 import { useDispatch, useSelector } from "react-redux";
@@ -7,7 +7,7 @@ import { useDispatch, useSelector } from "react-redux";
 import Card from "@mui/material/Card";
 import CardContent from "@mui/material/CardContent";
 import Button from "@mui/material/Button";
-import Grid from "@mui/material/Grid2";
+import Grid from "@mui/material/Grid";
 import InputAdornment from "@mui/material/InputAdornment";
 import Typography from "@mui/material/Typography";
 import CircularProgress from "@mui/material/CircularProgress";
@@ -42,7 +42,11 @@ const Login = () => {
       navigate(fromPath, { replace: true });
     } catch (error) {
       const errMsg = error?.data?.message || error?.message || "Login failed";
+      const errorType = error?.data?.errorCode || error?.errorCode || "UNKNOWN";
       toast.error(errMsg);
+      if (errorType === "AUTH_VERIFY") {
+        navigate("/verify-email");
+      }
     }
   };
 

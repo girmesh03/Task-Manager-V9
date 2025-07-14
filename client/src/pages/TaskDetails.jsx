@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Navigate, useParams } from "react-router";
+import { Navigate, useParams } from "react-router-dom";
 
 import Box from "@mui/material/Box";
 import Tab from "@mui/material/Tab";

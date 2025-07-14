@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
 import PropTypes from "prop-types";
-import { Navigate } from "react-router";
+import { Navigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { toast } from "react-toastify";
 
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
-import Grid from "@mui/material/Grid2";
+import Grid from "@mui/material/Grid";
 import FormControl from "@mui/material/FormControl";
 import FormLabel from "@mui/material/FormLabel";
 import InputAdornment from "@mui/material/InputAdornment";
@@ -28,7 +28,11 @@ import MuiAutocomplete from "../MuiAutocomplete";
 import MuiFormDialog from "../MuiFormDialog";
 import { LoadingFallback } from "../LoadingFallback";
 
-import { userRoleTypes } from "../../utils/constants";
+import {
+  userRoleTypes,
+  userActiveTypes,
+  userVerifiedTypes,
+} from "../../utils/constants";
 
 const CreateUpdateUser = ({ open, handleClose, title, selectedUser }) => {
   const departmentId = useSelector(selectSelectedDepartmentId);
@@ -57,13 +61,13 @@ const CreateUpdateUser = ({ open, handleClose, title, selectedUser }) => {
     formState: { isSubmitting },
   } = useForm({
     defaultValues: {
+      department: "",
       firstName: "",
       lastName: "",
       position: "",
       email: "",
       password: "",
       role: "User",
-      department: "",
     },
   });
 
@@ -83,6 +87,8 @@ const CreateUpdateUser = ({ open, handleClose, title, selectedUser }) => {
             lastName: formData.lastName,
             position: formData.position,
             role: formData.role,
+            isActive: formData.isActive === "Active" ? true : false,
+            isVerified: formData.isVerified === "Verified" ? true : false,
           },
         }).unwrap();
       } else {
@@ -108,6 +114,8 @@ const CreateUpdateUser = ({ open, handleClose, title, selectedUser }) => {
         lastName: selectedUser.lastName,
         position: selectedUser.position,
         role: selectedUser.role,
+        isVerified: selectedUser.isVerified ? "Verified" : "Not Verified",
+        isActive: selectedUser.isActive ? "Active" : "Inactive",
       });
     }
   }, [selectedUser, reset]);
@@ -207,13 +215,49 @@ const CreateUpdateUser = ({ open, handleClose, title, selectedUser }) => {
                 name="role"
                 control={control}
                 options={userRoleTypes.filter(
-                  (item) => item.label !== "SuperAdmin"
+                  (item) => item.label !== "superAdmin"
                 )}
-                rules={{ required: "User role is required" }}
+                // rules={{ required: "User role is required" }}
               />
             </Stack>
           </Grid>
 
+          {/* isActive and isVerified */}
+          {selectedUser && (
+            <>
+              {/* isActive */}
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <Stack direction="column" justifyContent="center" spacing={1}>
+                  <Typography variant="body1" sx={{ color: "text.secondary" }}>
+                    User Status
+                  </Typography>
+                  <DropdownMenu
+                    name="isActive"
+                    control={control}
+                    options={userActiveTypes}
+                    rules={{ required: "User status is required" }}
+                  />
+                </Stack>
+              </Grid>
+
+              {/* isVerified */}
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <Stack direction="column" justifyContent="center" spacing={1}>
+                  <Typography variant="body1" sx={{ color: "text.secondary" }}>
+                    Verification Status
+                  </Typography>
+                  <DropdownMenu
+                    name="isVerified"
+                    control={control}
+                    options={userVerifiedTypes}
+                    rules={{ required: "Verification field is required" }}
+                  />
+                </Stack>
+              </Grid>
+            </>
+          )}
+
+          {/* Email and Password */}
           {!selectedUser && (
             <>
               {/* Email */}

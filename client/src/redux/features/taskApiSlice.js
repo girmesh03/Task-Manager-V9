@@ -3,9 +3,9 @@ import { apiSlice } from "./apiSlice";
 export const taskApiSlice = apiSlice.injectEndpoints({
   endpoints: (builder) => ({
     getTasks: builder.query({
-      query: ({ departmentId, page = 1, limit = 10, status }) => ({
+      query: ({ departmentId, page = 1, limit = 10, status, currentDate }) => ({
         url: `/tasks/department/${departmentId}`,
-        params: { page, limit, status },
+        params: { page, limit, status, currentDate },
       }),
       transformResponse: (response) => ({
         tasks: response.tasks,
@@ -43,6 +43,7 @@ export const taskApiSlice = apiSlice.injectEndpoints({
         body: taskData,
       }),
       invalidatesTags: (result, error, { departmentId }) => [
+        { type: "Department", id: departmentId },
         { type: "Task", id: `DEPARTMENT-${departmentId}` },
         { type: "Statistics", id: `DEPARTMENT-${departmentId}` },
         // { type: "Activity", id: `LIST-${result?._id}` }, // Assuming result contains the new task ID

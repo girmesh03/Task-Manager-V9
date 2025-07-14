@@ -1,13 +1,13 @@
-import { Navigate } from "react-router";
-import dayjs from "dayjs";
+import { Navigate } from "react-router-dom";
 
 import Container from "@mui/material/Container";
 import Typography from "@mui/material/Typography";
-import Grid from "@mui/material/Grid2";
+import Grid from "@mui/material/Grid";
 
 import { useSelector } from "react-redux";
 import { useGetStatisticsQuery } from "../redux/features/statisticsApiSlice";
 import { selectSelectedDepartmentId } from "../redux/features/authSlice";
+import { selectFilters } from "../redux/features/filtersSlice";
 
 import StatisticsCard from "../components/StatisticsCard";
 import SixMonthBarChart from "../components/SixMonthBarChart";
@@ -19,11 +19,15 @@ import {
 
 const Dashboard = () => {
   const departmentId = useSelector(selectSelectedDepartmentId);
+  const filters = useSelector(selectFilters);
+  const { selectedDate } = filters;
+
   const { data, isLoading, isFetching, isError, error } = useGetStatisticsQuery(
     {
       departmentId,
-      currentDate: dayjs().format("YYYY-MM-DD"),
-    }
+      currentDate: selectedDate,
+    },
+    { refetchOnMountOrArgChange: true }
   );
 
   const {

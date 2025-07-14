@@ -1,4 +1,4 @@
-import { Navigate, useParams } from "react-router";
+import { Navigate, useParams } from "react-router-dom";
 import dayjs from "dayjs";
 
 import Box from "@mui/material/Box";

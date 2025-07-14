@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { Navigate } from "react-router";
+import { Navigate } from "react-router-dom";
 import PropTypes from "prop-types";
 import { useForm } from "react-hook-form";
 import { toast } from "react-toastify";
@@ -10,7 +10,7 @@ import FormControl from "@mui/material/FormControl";
 import FormLabel from "@mui/material/FormLabel";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
-import Grid from "@mui/material/Grid2";
+import Grid from "@mui/material/Grid";
 
 import { useSelector } from "react-redux";
 import { useGetUsersQuery } from "../redux/features/userApiSlice";
@@ -28,6 +28,7 @@ import MuiMobileDatePicker from "./MuiMobileDatePicker";
 import { LoadingFallback } from "./LoadingFallback";
 
 import { priorityTypes } from "../utils/constants";
+import { customDayjs } from "../utils/customDayjs";
 
 const CreateUpdateTask = ({
   open,
@@ -97,12 +98,6 @@ const CreateUpdateTask = ({
           phoneNumber: formData.phoneNumber,
           address: formData.address,
         };
-        taskData.proforma = [
-          {
-            url: "doc.pdf",
-            type: "pdf",
-          },
-        ];
       }
 
       if (taskToBeUpdated && title === "Update Task") {
@@ -130,51 +125,41 @@ const CreateUpdateTask = ({
   };
 
   useEffect(() => {
+    const commonFields = {
+      title: "taks title",
+      description: "task desc",
+      location: "main kitchen",
+      dueDate: customDayjs().format("YYYY-MM-DD"),
+      priority: "Medium",
+      taskType: selectedTaskType,
+    };
     if (isToUpdate) {
       if (isProjectTask) {
         reset({
-          title: taskToBeUpdated.title,
-          description: taskToBeUpdated.description,
-          location: taskToBeUpdated.location,
-          dueDate: taskToBeUpdated.dueDate,
-          priority: taskToBeUpdated.priority,
-          taskType: taskToBeUpdated.taskType,
+          ...taskToBeUpdated,
+          dueDate: customDayjs(taskToBeUpdated.dueDate).format("YYYY-MM-DD"),
           companyName: taskToBeUpdated.companyInfo?.name,
           phoneNumber: taskToBeUpdated.companyInfo?.phoneNumber,
           address: taskToBeUpdated.companyInfo?.address,
         });
       } else {
         reset({
-          title: taskToBeUpdated.title,
-          description: taskToBeUpdated.description,
-          location: taskToBeUpdated.location,
-          dueDate: taskToBeUpdated.dueDate,
-          priority: taskToBeUpdated.priority,
-          taskType: taskToBeUpdated.taskType,
+          ...taskToBeUpdated,
+          dueDate: customDayjs(taskToBeUpdated.dueDate).format("YYYY-MM-DD"),
           assignedTo: taskToBeUpdated?.assignedTo?.map((user) => user._id),
         });
       }
     } else {
       if (isProjectTask) {
         reset({
-          title: "",
-          description: "",
-          location: "",
-          dueDate: dayjs().format("YYYY-MM-DD"),
-          priority: "Medium",
-          taskType: selectedTaskType,
+          ...commonFields,
           companyName: "",
           phoneNumber: "",
           address: "",
         });
       } else {
         reset({
-          title: "",
-          description: "",
-          location: "",
-          dueDate: dayjs().format("YYYY-MM-DD"),
-          priority: "Medium",
-          taskType: selectedTaskType,
+          ...commonFields,
           assignedTo: [],
         });
       }

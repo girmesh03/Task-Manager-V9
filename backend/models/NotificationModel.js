@@ -1,13 +1,12 @@
 import mongoose from "mongoose";
 import mongoosePaginate from "mongoose-paginate-v2";
-import { getFormattedDate } from "../utils/GetDateIntervals.js";
 
 const notificationSchema = new mongoose.Schema(
   {
     user: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
-      required: [true, "Recipient user is required"],
+      required: [true, "Notification Recipient user is required"],
       index: true,
     },
     message: {
@@ -19,22 +18,51 @@ const notificationSchema = new mongoose.Schema(
     type: {
       type: String,
       enum: [
-        "TaskAssignment",
-        "TaskCompletion",
-        "TaskUpdate",
-        "StatusChange",
-        "SystemAlert",
+        "TaskAssignment", // When user is assigned to task
+        "TaskCompletion", // When task is completed
+        "TaskUpdate", // When task details change
+        "StatusChange", // When task status changes
+        "SystemAlert", // System-wide notifications
       ],
-      required: [true, "Notification type is required"],
+      required: [true, "Notification type/category is required"],
+      index: true,
+    },
+    task: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Task",
+    },
+    department: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Department",
       index: true,
     },
     linkedDocument: {
       type: mongoose.Schema.Types.ObjectId,
       refPath: "linkedDocumentType",
+      validate: {
+        validator: function (value) {
+          // Ensure linkedDocument is required when the type is one of the specified options
+          return (
+            !["TaskAssignment", "TaskUpdate", "StatusChange"].includes(
+              this.type
+            ) || value != null
+          );
+        },
+        message:
+          "Notification Linked document is required when type is TaskAssignment, TaskUpdate, or StatusChange.",
+      },
     },
     linkedDocumentType: {
       type: String,
-      enum: ["Task", "User", "Department", "TaskActivity", "RoutineTask"],
+      enum: ["Department", "User", "Task", "TaskActivity", "RoutineTask"],
+      validate: {
+        validator: function (value) {
+          // Ensure linkedDocumentType is required when linkedDocument is provided
+          return !this.linkedDocument || !!value;
+        },
+        message:
+          "Notification Linked document is required if linkedDocument is provided.",
+      },
     },
     isRead: {
       type: Boolean,
@@ -46,17 +74,13 @@ const notificationSchema = new mongoose.Schema(
     timestamps: true,
     versionKey: false,
     toJSON: {
-      transform: function (doc, ret) {
-        ret.createdAt = getFormattedDate(ret.createdAt, 0);
-        ret.updatedAt = getFormattedDate(ret.updatedAt, 0);
+      transform: (doc, ret) => {
         delete ret.id;
         return ret;
       },
     },
     toObject: {
-      transform: function (doc, ret) {
-        ret.createdAt = getFormattedDate(ret.createdAt, 0);
-        ret.updatedAt = getFormattedDate(ret.updatedAt, 0);
+      transform: (doc, ret) => {
         delete ret.id;
         return ret;
       },
@@ -64,13 +88,9 @@ const notificationSchema = new mongoose.Schema(
   }
 );
 
-// Indexes
+// Auto-expire after 30 days
+notificationSchema.index({ createdAt: 1 }, { expireAfterSeconds: 2592000 });
 notificationSchema.index({ user: 1, isRead: 1 });
-notificationSchema.index({ createdAt: 1 }, { expireAfterSeconds: 2592000 }); // 30 days TTL
-
-// Plugins
 notificationSchema.plugin(mongoosePaginate);
 
-const Notification = mongoose.model("Notification", notificationSchema);
-
-export default Notification;
+export default mongoose.model("Notification", notificationSchema);

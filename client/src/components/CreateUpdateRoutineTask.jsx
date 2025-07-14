@@ -2,17 +2,15 @@ import { useState, useEffect } from "react";
 import PropTypes from "prop-types";
 import { useForm, useFieldArray } from "react-hook-form";
 import { toast } from "react-toastify";
-
 import dayjs from "dayjs";
 
-import Grid from "@mui/material/Grid2";
+import Grid from "@mui/material/Grid";
 import FormControl from "@mui/material/FormControl";
 import FormLabel from "@mui/material/FormLabel";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import Divider from "@mui/material/Divider";
 import Button from "@mui/material/Button";
-import IconButton from "@mui/material/IconButton";
 import Checkbox from "@mui/material/Checkbox";
 import AddIcon from "@mui/icons-material/Add";
 import EditIcon from "@mui/icons-material/Edit";
@@ -70,7 +68,7 @@ const CreateUpdateRoutineTask = ({
   useEffect(() => {
     if (isToUpdate && taskToBeUpdated.performedTasks) {
       reset({
-        date: taskToBeUpdated.date,
+        date: dayjs(taskToBeUpdated.date).format("YYYY-MM-DD"),
         performedTasks: taskToBeUpdated.performedTasks,
         description: "",
       });
@@ -120,14 +118,11 @@ const CreateUpdateRoutineTask = ({
     }
 
     try {
-      const payload = isToUpdate
-        ? {
-            performedTasks: fields,
-          }
-        : {
-            performedTasks: fields,
-            date: formData.date,
-          };
+      const payload = {
+        performedTasks: fields,
+        date: formData.date,
+        attachments: [],
+      };
 
       const { message } = isToUpdate
         ? await updateRoutineTask({

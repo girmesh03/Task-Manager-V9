@@ -1,25 +1,22 @@
 import jwt from "jsonwebtoken";
-import CustomError from "../errorHandler/CustomError.js";
 
 // Token expiration times
-const ACCESS_TOKEN_EXPIRY = "7d";
+const ACCESS_TOKEN_EXPIRY = "1d";
 const REFRESH_TOKEN_EXPIRY = "7d";
-const ACCESS_TOKEN_MAX_AGE = 7 * 24 * 60 * 60 * 1000;
+const ACCESS_TOKEN_MAX_AGE = 1 * 24 * 60 * 60 * 1000;
 const REFRESH_TOKEN_MAX_AGE = 7 * 24 * 60 * 60 * 1000;
 
-export const generateAccessToken = (res, user) => {
-  if (!user || !user._id || !user.role) {
-    throw new CustomError(
-      "Invalid user data for token generation",
-      500,
-      "AUTH-500"
-    );
-  }
+// const ACCESS_TOKEN_EXPIRY = "15s";
+// const REFRESH_TOKEN_EXPIRY = "30m";
+// const ACCESS_TOKEN_MAX_AGE = 15 * 1000;
+// const REFRESH_TOKEN_MAX_AGE = 30 * 60 * 1000;
 
+export const generateAccessToken = (res, user) => {
   const accessToken = jwt.sign(
     {
       _id: user._id,
       role: user.role,
+      department: user.department._id,
       tokenVersion: user.tokenVersion,
     },
     process.env.JWT_ACCESS_SECRET,
@@ -31,7 +28,6 @@ export const generateAccessToken = (res, user) => {
     secure: process.env.NODE_ENV === "production",
     sameSite: "strict",
     maxAge: ACCESS_TOKEN_MAX_AGE,
-    path: "/",
     domain: process.env.COOKIE_DOMAIN || "localhost",
   });
 
@@ -42,7 +38,9 @@ export const generateRefreshToken = (res, user) => {
   const refreshToken = jwt.sign(
     {
       _id: user._id,
-      tokenVersion: user.tokenVersion,
+      role: user.role,
+      department: user.department._id,
+      // tokenVersion: user.tokenVersion,
     },
     process.env.JWT_REFRESH_SECRET,
     { expiresIn: REFRESH_TOKEN_EXPIRY }
@@ -53,7 +51,6 @@ export const generateRefreshToken = (res, user) => {
     secure: process.env.NODE_ENV === "production",
     sameSite: "strict",
     maxAge: REFRESH_TOKEN_MAX_AGE,
-    path: "/api/auth/refresh-token",
     domain: process.env.COOKIE_DOMAIN || "localhost",
   });
 

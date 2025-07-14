@@ -1,5 +1,4 @@
-import { Navigate, useParams } from "react-router";
-import dayjs from "dayjs";
+import { Navigate, useParams } from "react-router-dom";
 import PropTypes from "prop-types";
 
 import { useTheme } from "@mui/material/styles";
@@ -7,7 +6,7 @@ import { LineChart } from "@mui/x-charts/LineChart";
 import Container from "@mui/material/Container";
 import Stack from "@mui/material/Stack";
 import Box from "@mui/material/Box";
-import Grid from "@mui/material/Grid2";
+import Grid from "@mui/material/Grid";
 import Card from "@mui/material/Card";
 import CardContent from "@mui/material/CardContent";
 import Typography from "@mui/material/Typography";
@@ -15,6 +14,7 @@ import Typography from "@mui/material/Typography";
 import { useSelector } from "react-redux";
 import { selectSelectedDepartmentId } from "../redux/features/authSlice";
 import { useGetUserProfileQuery } from "../redux/features/userApiSlice";
+import { selectFilters } from "../redux/features/filtersSlice";
 
 import {
   LoadingBackdrop,
@@ -99,8 +99,10 @@ TaskLineChart.propTypes = {
 const UserProfile = () => {
   const { userId } = useParams();
   const departmentId = useSelector(selectSelectedDepartmentId);
-  const theme = useTheme();
+  const filters = useSelector(selectFilters);
+  const { selectedDate } = filters;
 
+  const theme = useTheme();
   const colorPalette = [
     theme.palette.primary.contrastText,
     theme.palette.primary.light,
@@ -118,10 +120,8 @@ const UserProfile = () => {
   } = useGetUserProfileQuery({
     departmentId,
     userId,
-    currentDate: dayjs().format("YYYY-MM-DD"),
+    currentDate: selectedDate,
   });
-
-  const { user } = data || {};
 
   const {
     fullName = "",
@@ -135,7 +135,7 @@ const UserProfile = () => {
     assignedSeries = [],
     routineSeries = [],
     daysInLast30 = [],
-  } = user || {};
+  } = data || {};
 
   if (isLoading) return <LoadingFallback />;
   if (isFetching) return <LoadingBackdrop open={isFetching} />;
@@ -170,7 +170,7 @@ const UserProfile = () => {
                 {profilePicture && (
                   <Box
                     component="img"
-                    src={profilePicture}
+                    src={profilePicture?.url}
                     alt={fullName}
                     sx={{
                       width: 80,
