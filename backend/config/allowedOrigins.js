@@ -1,8 +1,6 @@
 const allowedOrigins = [
   "http://localhost:3000",
-  ...(process.env.PRODUCTION_ORIGINS
-    ? process.env.PRODUCTION_ORIGINS.split(",")
-    : []),
+  "https://task-manager-v9.vercel.app",
 ];
 
 export default allowedOrigins;
