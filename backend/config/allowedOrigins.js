@@ -1,6 +1,3 @@
-const allowedOrigins = [
-  "http://localhost:3000",
-  "https://task-manager-v9-vn1q-girmazewdei38-4801s-projects.vercel.app",
-];
+const allowedOrigins = ["http://localhost:3000"];
 
 export default allowedOrigins;
