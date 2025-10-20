@@ -3,73 +3,124 @@ import jwt from "jsonwebtoken";
 import User from "../models/UserModel.js";
 import Notification from "../models/NotificationModel.js";
 import CustomError from "../errorHandler/CustomError.js";
+
 import {
   sendResetPasswordEmail,
   sendRestSuccessEmail,
 } from "../utils/SendEmail.js";
+
 import {
   generateAccessToken,
   generateRefreshToken,
-} from "../utils/GenerateTokens.js";
+  getAccessTokenCookieOptions,
+  getRefreshTokenCookieOptions,
+} from "../utils/generateTokens.js";
+
 import { emitToUser } from "../utils/SocketEmitter.js";
-import {customDayjs} from "../utils/GetDateIntervals.js";
+import { customDayjs } from "../utils/GetDateIntervals.js";
 
 // @desc    Login
 // @route   POST /api/auth/login
 // @access  Public
-const login = asyncHandler(async (req, res, next) => {
-  const { email, password } = req.body;
+const loginUser = asyncHandler(async (req, res, next) => {
+  try {
+    const { email, password } = req.body;
 
-  // Validate input
-  if (!email?.trim() || !password?.trim()) {
-    return next(new CustomError("Email and password are required", 400));
-  }
+    // Input validation
+    if (!email || !password) {
+      return next(
+        new CustomError(
+          "Email and password are required",
+          400,
+          "MISSING_CREDENTIALS"
+        )
+      );
+    }
 
-  // Find user with populated department data
-  const user = await User.findOne({ email: email.toLowerCase() })
-    .select("+password +isVerified +isActive +tokenVersion")
-    .populate({
-      path: "department",
-      select: "name description",
-      populate: {
-        path: "managers",
-        select:
-          "firstName lastName fullName position email position profilePicture",
-      },
+    // Find user with company and department details
+    const user = await User.findOne({ email: email.toLowerCase() })
+      .populate("company", "name isActive subscription.status")
+      .populate("department", "name isActive")
+      .select("+password");
+
+    if (!user) {
+      return next(
+        new CustomError("Invalid email or password", 401, "INVALID_CREDENTIALS")
+      );
+    }
+
+    // Verify password
+    if (!(await user.matchPassword(password))) {
+      return next(
+        new CustomError("Invalid email or password", 401, "INVALID_CREDENTIALS")
+      );
+    }
+
+    // Check if user is active
+    if (!user.isActive) {
+      return next(
+        new CustomError("User account is deactivated", 401, "USER_DEACTIVATED")
+      );
+    }
+
+    // Check if company is active
+    if (!user.company.isActive) {
+      return next(
+        new CustomError(
+          "Company account is deactivated",
+          401,
+          "COMPANY_DEACTIVATED"
+        )
+      );
+    }
+
+    // Check company subscription status
+    if (user.company.subscription.status !== "active") {
+      return next(
+        new CustomError(
+          "Company subscription is not active",
+          403,
+          "SUBSCRIPTION_INACTIVE"
+        )
+      );
+    }
+
+    // Check if department is active
+    if (!user.department.isActive) {
+      return next(
+        new CustomError(
+          "Department is deactivated",
+          401,
+          "DEPARTMENT_DEACTIVATED"
+        )
+      );
+    }
+
+    // Generate tokens
+    const accessToken = generateAccessToken(user._id);
+    const refreshToken = generateRefreshToken(user._id);
+
+    // Update user's last login
+    user.lastLogin = new Date();
+    await user.save();
+
+    // Set cookies
+    res.cookie("access_token", accessToken, getAccessTokenCookieOptions());
+    res.cookie("refresh_token", refreshToken, getRefreshTokenCookieOptions());
+
+    // Remove sensitive data from response
+    const userResponse = user.toObject();
+    delete userResponse.password;
+
+    res.status(200).json({
+      success: true,
+      message: "Login successful",
+      data: userResponse,
     });
-
-  // Authentication checks
-  if (!user) return next(new CustomError("Invalid credentials", 401));
-  if (!(await user.matchPassword(password))) {
-    return next(new CustomError("Invalid credentials", 401));
+  } catch (error) {
+    console.error("Login error:", error);
+    next(error);
   }
-  if (!user.isVerified) {
-    return next(
-      new CustomError("Please verify your email first", 403, "AUTH_VERIFY")
-    );
-  }
-  if (!user.isActive) {
-    return next(
-      new CustomError("Account deactivated - contact administrator", 403)
-    );
-  }
-
-  // Generate tokens
-  generateAccessToken(res, user);
-  generateRefreshToken(res, user);
-
-  // Remove sensitive data before sending response
-  const userResponse = user.toObject();
-  delete userResponse.password;
-  delete userResponse.tokenVersion;
-  delete userResponse.verificationToken;
-  delete userResponse.resetPasswordToken;
-
-  res.status(200).json({
-    success: true,
-    user: userResponse,
-    message: "Login successful",
-  });
 });
 
 // @desc    Verify user email
@@ -125,24 +176,34 @@ const verifyEmail = asyncHandler(async (req, res, next) => {
   });
 });
 
-// @desc    Logout
-// @route   POST /api/auth/logout
-// @access  Private
-const logout = asyncHandler(async (req, res) => {
-  // Clear cookies
-  res.clearCookie("access_token", {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "strict",
-  });
+//@desc    Logout user and clear cookies
+//@route   DELETE /api/auth/logout
+//@access  Private
+const logoutUser = asyncHandler(async (req, res, next) => {
+  try {
+    // Clear cookies
+    res.clearCookie("access_token", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      path: "/",
+    });
 
-  res.clearCookie("refresh_token", {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "strict",
-  });
+    res.clearCookie("refresh_token", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      path: "/api/auth/refresh-token",
+    });
 
-  res.status(200).json({ success: true, message: "Logged out successfully" });
+    res.status(200).json({
+      success: true,
+      message: "Logout successful",
+    });
+  } catch (error) {
+    console.error("Logout error:", error);
+    next(error);
+  }
 });
 
 // @desc    Forgot password
@@ -340,9 +401,9 @@ const getMe = asyncHandler(async (req, res, next) => {
 });
 
 export {
-  login,
+  loginUser,
   verifyEmail,
-  logout,
+  logoutUser,
   forgotPassword,
   resetPassword,
   getRefreshToken,

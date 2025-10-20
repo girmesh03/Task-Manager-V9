@@ -1,9 +1,9 @@
 import express from "express";
 
 import {
-  login,
+  loginUser,
   verifyEmail,
-  logout,
+  logoutUser,
   forgotPassword,
   resetPassword,
   getRefreshToken,
@@ -14,14 +14,17 @@ import authLimiter from "../middlewares/rateLimiter.js";
 
 const router = express.Router();
 
-router.use("/login", authLimiter);
-router.use("/verify-email", authLimiter);
-router.use("/forgot-password", authLimiter);
-router.use("/reset-password/:resetToken", authLimiter);
+// @route   POST /api/auth/login
+// @desc    Authenticate user and get token
+// @access  Public
+// router.post("/login", authLimiter, validateLogin, loginUser);
+router.route("/login").post(loginUser);
 
-router.post("/login", login);
-router.post("/verify-email", verifyEmail);
-router.post("/logout", logout);
+// @route   DELETE /api/auth/logout
+// @desc    Logout user
+// @access  Private
+router.route("/logout").delete(logoutUser);
+
 router.post("/forgot-password", forgotPassword);
 router.post("/reset-password/:resetToken", resetPassword);
 router.get("/refresh", getRefreshToken);

@@ -29,155 +29,495 @@ const authorizeTaskAccess = (user, task) => {
 function arraysEqual(a, b) {
   return a.length === b.length && a.every((val, index) => val === b[index]);
 }
+const PHONE_REGEX = /^(09\d{8}|\+2519\d{8})$/;
+
+// @desc    Create Task (AssignedTask or ProjectTask)
+// @route   POST /api/tasks/department/:departmentId
+// @access  Private (SuperAdmin, Admin, Manager)
+// const createTask = asyncHandler(async (req, res, next) => {
+//   const session = await mongoose.startSession();
+//   session.startTransaction();
+
+//   try {
+//     const {
+//       title,
+//       description,
+//       location,
+//       priority,
+//       taskType,
+//       clientInfo,
+//       assignedTo,
+//     } = req.body;
+//     const { departmentId } = req.params;
+//     const { company } = req.user;
+//     const currentDate = new Date();
+
+//     // 1. Validate required fields
+//     const requiredFields = ["title", "dueDate", "taskType"];
+//     const missingFields = requiredFields.filter((field) => !req.body[field]);
+
+//     if (missingFields.length > 0) {
+//       throw new CustomError(
+//         `Missing required fields: ${missingFields.join(", ")}`,
+//         400,
+//         "VALIDATION_ERROR"
+//       );
+//     }
+
+//     // 2. Validate task type
+//     if (!["AssignedTask", "ProjectTask"].includes(taskType)) {
+//       throw new CustomError("Invalid task type", 400, "VALIDATION_ERROR");
+//     }
+
+//     // 3. Validate dueDate (future date)
+//     const dueDate = new Date(req.body.dueDate);
+//     if (isNaN(dueDate.getTime())) {
+//       throw new CustomError("Invalid due date format", 400, "VALIDATION_ERROR");
+//     }
+
+//     if (dueDate <= currentDate) {
+//       throw new CustomError(
+//         "Due date must be in the future",
+//         400,
+//         "VALIDATION_ERROR"
+//       );
+//     }
+
+//     // 4. Validate department exists in company
+//     const department = await Department.findOne({
+//       _id: departmentId,
+//       company,
+//     }).session(session);
+
+//     if (!department) {
+//       throw new CustomError(
+//         "Department not found in company",
+//         404,
+//         "RESOURCE_NOT_FOUND"
+//       );
+//     }
+
+//     // 5. Validate creator user
+//     const creator = await User.findOne({
+//       _id: req.user._id,
+//       company,
+//       department: departmentId,
+//       isActive: true,
+//       role: { $in: ["SuperAdmin", "Admin", "Manager"] },
+//     }).session(session);
+
+//     if (!creator) {
+//       throw new CustomError(
+//         "Creator not authorized or active in department",
+//         403,
+//         "AUTHORIZATION_ERROR"
+//       );
+//     }
+
+//     // 6. Task type specific validation
+//     let taskData = {
+//       title,
+//       description,
+//       location,
+//       priority: priority || "Medium",
+//       dueDate,
+//       department: departmentId,
+//       company,
+//       createdBy: req.user._id,
+//     };
+
+//     if (taskType === "AssignedTask") {
+//       // Validate assignedTo
+//       if (
+//         !assignedTo ||
+//         !Array.isArray(assignedTo) ||
+//         assignedTo.length === 0
+//       ) {
+//         throw new CustomError(
+//           "At least one assigned user required",
+//           400,
+//           "VALIDATION_ERROR"
+//         );
+//       }
+
+//       // Validate assigned users
+//       const validUsers = await User.find({
+//         _id: { $in: assignedTo },
+//         company,
+//         department: departmentId,
+//         isActive: true,
+//       }).session(session);
+
+//       if (validUsers.length !== assignedTo.length) {
+//         const invalidUsers = assignedTo.filter(
+//           (id) => !validUsers.some((user) => user._id.equals(id))
+//         );
+
+//         throw new CustomError(
+//           `Invalid or inactive users: ${invalidUsers.join(", ")}`,
+//           403,
+//           "AUTHORIZATION_ERROR"
+//         );
+//       }
+
+//       taskData = { ...taskData, assignedTo };
+//     } else if (taskType === "ProjectTask") {
+//       // Validate clientInfo
+//       if (!clientInfo?.name || !clientInfo?.phone) {
+//         throw new CustomError(
+//           "Company info name and phone required",
+//           400,
+//           "VALIDATION_ERROR"
+//         );
+//       }
+
+//       if (!PHONE_REGEX.test(clientInfo.phone)) {
+//         throw new CustomError(
+//           "Invalid Ethiopian phone number format",
+//           400,
+//           "VALIDATION_ERROR"
+//         );
+//       }
+
+//       taskData = { ...taskData, clientInfo };
+//     }
+
+//     // 7. Create task
+//     let createdTask;
+//     if (taskType === "AssignedTask") {
+//       createdTask = new AssignedTask(taskData);
+//     } else {
+//       createdTask = new ProjectTask(taskData);
+//     }
+
+//     await createdTask.save({ session });
+
+//     // 8. Create notifications and emit events
+//     if (taskType === "AssignedTask") {
+//       const notificationPromises = assignedTo.map((userId) =>
+//         Notification.create(
+//           [
+//             {
+//               user: userId,
+//               message: `New task assigned: ${title}`,
+//               type: "TaskAssignment",
+//               department: departmentId,
+//               company,
+//               linkedDocument: createdTask._id,
+//               linkedDocumentType: "Task",
+//             },
+//           ],
+//           { session }
+//         )
+//       );
+
+//       await Promise.all(notificationPromises);
+
+//       // Emit socket events to assigned users
+//       assignedTo.forEach((userId) => {
+//         emitToUser(userId, "task_assignment", {
+//           taskId: createdTask._id,
+//           title,
+//           dueDate: createdTask.dueDate,
+//         });
+//       });
+//     } else {
+//       const managers = await User.find({
+//         department: departmentId,
+//         role: { $in: ["Manager", "Admin", "SuperAdmin"] },
+//         isActive: true,
+//       }).session(session);
+
+//       const notificationPromises = managers.map((manager) =>
+//         Notification.create(
+//           [
+//             {
+//               user: manager._id,
+//               message: `New project task created: ${title}`,
+//               type: "TaskAssignment",
+//               department: departmentId,
+//               company,
+//               linkedDocument: createdTask._id,
+//               linkedDocumentType: "Task",
+//             },
+//           ],
+//           { session }
+//         )
+//       );
+
+//       await Promise.all(notificationPromises);
+
+//       // Emit socket event to department managers
+//       emitToManagers(departmentId, "new_project_task", {
+//         taskId: createdTask._id,
+//         title,
+//         department: departmentId,
+//       });
+//     }
+
+//     // 9. Commit transaction
+//     await session.commitTransaction();
+
+//     // 10. Prepare response with populated fields
+//     const responseTask = await DiscriminatorModel.findById(createdTask._id)
+//       .populate({
+//         path: "createdBy",
+//         select: "firstName lastName role",
+//       })
+//       .populate({
+//         path: "department",
+//         select: "name",
+//       });
+
+//     res.status(201).json({
+//       status: "success",
+//       data: responseTask,
+//     });
+//   } catch (error) {
+//     await session.abortTransaction();
+//     next(error);
+//   } finally {
+//     session.endSession();
+//   }
+// });
 
 // @desc    Create Task (AssignedTask or ProjectTask)
 // @route   POST /api/tasks/department/:departmentId
 // @access  Private (SuperAdmin, Admin, Manager)
 const createTask = asyncHandler(async (req, res, next) => {
-  // Start session first
   const session = await mongoose.startSession();
+  session.startTransaction();
 
   try {
-    // Start transaction inside try block to catch potential errors
-    session.startTransaction();
-
+    const {
+      title,
+      description,
+      location,
+      priority,
+      taskType,
+      clientInfo,
+      assignedTo,
+    } = req.body;
     const { departmentId } = req.params;
-    const { taskType, ...taskData } = req.body;
-    const creatorId = req.user._id;
+    const { company } = req.user;
+    const currentDate = new Date();
+
+    // Validate required fields
+    if (!title || !req.body.dueDate || !taskType) {
+      throw new CustomError(
+        "Missing required fields: title, dueDate, or taskType",
+        400,
+        "VALIDATION_ERROR"
+      );
+    }
 
     // Validate task type
     if (!["AssignedTask", "ProjectTask"].includes(taskType)) {
-      throw new CustomError("Invalid task type", 400);
+      throw new CustomError("Invalid task type", 400, "VALIDATION_ERROR");
     }
 
-    // Type-specific validations
-    if (taskType === "AssignedTask") {
-      if (!taskData.assignedTo?.length) {
-        throw new CustomError("Assigned tasks require at least one user", 400);
-      }
+    // Validate dueDate
+    const dueDate = new Date(req.body.dueDate);
+    if (isNaN(dueDate.getTime())) {
+      throw new CustomError("Invalid due date format", 400, "VALIDATION_ERROR");
     }
 
-    if (taskType === "ProjectTask") {
-      if (!taskData.companyInfo?.name || !taskData.companyInfo?.phoneNumber) {
-        throw new CustomError(
-          "Company name and phone number are required for project tasks",
-          400
-        );
-      }
+    if (dueDate <= currentDate) {
+      throw new CustomError(
+        "Due date must be in the future",
+        400,
+        "VALIDATION_ERROR"
+      );
     }
 
-    // Create base task data
-    const baseTask = {
-      ...taskData,
-      dueDate: customDayjs(taskData.dueDate).toDate(),
+    // Validate department
+    const department = await Department.findOne({
+      _id: departmentId,
+      company,
+    }).session(session);
+
+    if (!department) {
+      throw new CustomError(
+        "Department not found in company",
+        404,
+        "RESOURCE_NOT_FOUND"
+      );
+    }
+
+    // Validate creator
+    const creator = await User.findOne({
+      _id: req.user._id,
+      company,
       department: departmentId,
-      createdBy: creatorId,
+      isActive: true,
+      role: { $in: ["SuperAdmin", "Manager"] },
+    }).session(session);
+
+    if (!creator) {
+      throw new CustomError(
+        "Creator not authorized or active in department",
+        403,
+        "AUTHORIZATION_ERROR"
+      );
+    }
+
+    // Prepare task data
+    const taskData = {
+      title,
+      description,
+      location,
+      priority: priority || "Medium",
+      dueDate,
+      department: departmentId,
+      company,
+      createdBy: req.user._id,
     };
 
-    // Create specific task type
-    let newTask;
+    // Task type specific validation
+    let task;
     if (taskType === "AssignedTask") {
-      newTask = new AssignedTask(baseTask);
+      // Validate assignedTo
+      if (!assignedTo?.length) {
+        throw new CustomError(
+          "At least one assigned user required",
+          400,
+          "VALIDATION_ERROR"
+        );
+      }
+
+      // Validate assigned users
+      const validUsers = await User.find({
+        _id: { $in: assignedTo },
+        company,
+        department: departmentId,
+        isActive: true,
+      }).session(session);
+
+      if (validUsers.length !== assignedTo.length) {
+        const invalidUsers = assignedTo.filter(
+          (id) => !validUsers.some((user) => user._id.equals(id))
+        );
+
+        throw new CustomError(
+          `Invalid or inactive users: ${invalidUsers.join(", ")}`,
+          403,
+          "AUTHORIZATION_ERROR"
+        );
+      }
+
+      // Create and save AssignedTask
+      task = new AssignedTask({
+        ...taskData,
+        assignedTo,
+      });
+
+      await task.save({ session });
     } else {
-      newTask = new ProjectTask(baseTask);
+      // ProjectTask validation
+      if (!clientInfo?.name || !clientInfo?.phoneNumber) {
+        throw new CustomError(
+          "Company info name and phone required",
+          400,
+          "VALIDATION_ERROR"
+        );
+      }
+
+      if (!PHONE_REGEX.test(clientInfo.phoneNumber)) {
+        throw new CustomError(
+          "Invalid Ethiopian phone number format",
+          400,
+          "VALIDATION_ERROR"
+        );
+      }
+
+      // Create and save ProjectTask
+      task = new ProjectTask({
+        ...taskData,
+        clientInfo,
+      });
+
+      await task.save({ session });
     }
 
-    await newTask.save({ session });
-
     // Create notifications
-    const notifications = [];
     if (taskType === "AssignedTask") {
-      notifications.push(
-        ...newTask.assignedTo.map((userId) => ({
-          user: userId,
-          type: "TaskAssignment",
-          message: `New task assigned: ${newTask.title}`,
-          linkedDocument: newTask._id,
-          linkedDocumentType: "Task",
-          department: departmentId,
-        }))
-      );
+      const notifications = task.assignedTo.map((userId) => ({
+        user: userId,
+        message: `New task assigned: ${title}`,
+        type: "TaskAssignment",
+        department: departmentId,
+        company,
+        linkedDocument: task._id,
+        linkedDocumentType: "Task",
+      }));
+
+      await Notification.insertMany(notifications, { session });
+
+      // Emit socket events
+      task.assignedTo.forEach((userId) => {
+        emitToUser(userId, "new_assignment", {
+          taskId: task._id,
+          title,
+          dueDate: task.dueDate,
+        });
+      });
     } else {
-      // Notify department managers
       const managers = await User.find({
         department: departmentId,
         role: { $in: ["Manager", "Admin", "SuperAdmin"] },
+        isActive: true,
       }).session(session);
 
-      notifications.push(
-        ...managers.map((user) => ({
-          user: user._id,
-          type: "SystemAlert",
-          message: `New project task created: ${newTask.title}`,
-          linkedDocument: newTask._id,
-          linkedDocumentType: "Task",
-          department: departmentId,
-        }))
-      );
-    }
+      const notifications = managers.map((manager) => ({
+        user: manager._id,
+        message: `New project task created: ${title}`,
+        type: "TaskAssignment",
+        department: departmentId,
+        company,
+        linkedDocument: task._id,
+        linkedDocumentType: "Task",
+      }));
 
-    if (notifications.length > 0) {
       await Notification.insertMany(notifications, { session });
-      notifications.forEach((notif) => {
-        emitToUser(notif.user, "new-notification", notif);
+
+      // Emit to managers
+      emitToManagers(departmentId, "new_project_task", {
+        taskId: task._id,
+        title,
+        department: departmentId,
       });
     }
 
-    // Commit transaction
     await session.commitTransaction();
 
     // Populate response data
-    const populateOptions = [
-      {
-        path: "createdBy",
-        select:
-          "firstName lastName fullName email position role profilePicture",
-      },
-      { path: "department", select: "name" },
-      {
-        path: "activities",
-        populate: {
-          path: "performedBy",
-          select:
-            "firstName lastName fullName email position role profilePicture",
-        },
-      },
-    ];
-
-    if (taskType === "AssignedTask") {
-      populateOptions.push({
-        path: "assignedTo",
-        select:
-          "firstName lastName fullName email position role profilePicture",
-      });
-    }
-
-    const populatedTask = await (taskType === "AssignedTask"
+    const responseTask = await (taskType === "AssignedTask"
       ? AssignedTask
       : ProjectTask
     )
-      .findById(newTask._id)
-      .populate(populateOptions);
+      .findById(task._id)
+      .populate({
+        path: "createdBy",
+        select: "firstName lastName role",
+      })
+      .populate({
+        path: "department",
+        select: "name",
+      })
+      .populate({
+        path: "assignedTo",
+        select: "firstName lastName",
+        match: { isActive: true }, // Only active users
+      });
 
-    // Delete undefined fields
-    Object.keys(populatedTask).forEach((key) => {
-      if (populatedTask[key] === undefined) delete populatedTask[key];
-    });
-
-    // Return response
     res.status(201).json({
-      success: true,
-      task: populatedTask,
-      message: `${taskType} created successfully`,
+      status: "success",
+      data: responseTask,
     });
   } catch (error) {
-    // Only abort if transaction is active
-    if (session.inTransaction()) {
-      await session.abortTransaction();
-    }
+    await session.abortTransaction();
     next(error);
   } finally {
-    // Always end session
     session.endSession();
   }
 });
@@ -266,8 +606,7 @@ const getAllTasks = asyncHandler(async (req, res, next) => {
     // Transform response
     const transformedTasks = results.docs.map((task) => ({
       ...task.toObject({ virtuals: true }),
-      companyInfo:
-        task.taskType === "ProjectTask" ? task.companyInfo : undefined,
+      clientInfo: task.taskType === "ProjectTask" ? task.clientInfo : undefined,
       assignedTo:
         task.taskType === "AssignedTask" ? task.assignedTo : undefined,
     }));
@@ -277,7 +616,7 @@ const getAllTasks = asyncHandler(async (req, res, next) => {
       if (task.taskType === "ProjectTask") {
         delete task.assignedTo;
       } else {
-        delete task.companyInfo;
+        delete task.clientInfo;
       }
     }
 
@@ -380,12 +719,12 @@ const getTaskById = asyncHandler(async (req, res, next) => {
     // Transform response based on task type
     const transformedTask = {
       ...task.toObject({ virtuals: true }),
-      companyInfo: undefined,
+      clientInfo: undefined,
       assignedTo: undefined,
     };
 
     if (task.taskType === "ProjectTask") {
-      transformedTask.companyInfo = task.companyInfo;
+      transformedTask.clientInfo = task.clientInfo;
     } else if (task.taskType === "AssignedTask") {
       transformedTask.assignedTo = task.assignedTo;
     }
@@ -401,7 +740,7 @@ const getTaskById = asyncHandler(async (req, res, next) => {
     if (transformedTask.taskType === "ProjectTask") {
       delete transformedTask.assignedTo;
     } else {
-      delete transformedTask.companyInfo;
+      delete transformedTask.clientInfo;
     }
 
     const { activities, ...rest } = transformedTask;
@@ -485,7 +824,7 @@ const updateTaskById = asyncHandler(async (req, res, next) => {
       "priority",
     ];
     if (task.taskType === "AssignedTask") allowedUpdates.push("assignedTo");
-    if (task.taskType === "ProjectTask") allowedUpdates.push("companyInfo");
+    if (task.taskType === "ProjectTask") allowedUpdates.push("clientInfo");
 
     // Apply updates and track changes
     let hasAssignedToChange = false;
@@ -569,7 +908,7 @@ const updateTaskById = asyncHandler(async (req, res, next) => {
       "title",
       "dueDate",
       "priority",
-      "companyInfo",
+      "clientInfo",
     ]);
     const hasImportantChange =
       changedFields.some((f) => importantFields.has(f)) || hasAssignedToChange;
@@ -663,7 +1002,7 @@ const updateTaskById = asyncHandler(async (req, res, next) => {
     if (populatedTask.taskType === "ProjectTask") {
       delete populatedTask.assignedTo;
     } else {
-      delete populatedTask.companyInfo;
+      delete populatedTask.clientInfo;
     }
 
     await session.commitTransaction();

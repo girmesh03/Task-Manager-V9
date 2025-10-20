@@ -16,6 +16,11 @@ const departmentSchema = new mongoose.Schema(
       trim: true,
       maxlength: [300, "Description cannot exceed 300 characters"],
     },
+    company: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Company",
+      required: [true, "Company reference is required"],
+    },
     managers: {
       type: [mongoose.Schema.Types.ObjectId],
       ref: "User",
@@ -32,6 +37,7 @@ const departmentSchema = new mongoose.Schema(
         message: "All managers must belong to department with Manager+ role",
       },
     },
+    isActive: { type: Boolean, default: true, index: true },
   },
   {
     timestamps: true,

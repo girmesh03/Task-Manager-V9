@@ -1,7 +1,7 @@
+// backend/utils/SocketEmitter.js
 import { getIO } from "./SocketInstance.js";
-import User from "../models/UserModel.js";
 
-export const emitToUser = (userId, event, data) => {
+export const emitToUser = async (userId, event, data) => {
   try {
     const io = getIO();
     io.to(userId.toString()).emit(event, data);
@@ -36,28 +36,22 @@ export const emitToDepartment = async (departmentId, event, data) => {
   }
 };
 
-export const joinDepartmentRooms = async (userId) => {
+export const joinDepartmentRooms = async (socket) => {
   try {
-    const io = getIO();
-    const userIdStr = userId.toString();
-    const sockets = await io.fetchSockets();
-    const socket = sockets.find((s) => s.user?._id.toString() === userIdStr);
-
-    if (!socket) {
-      console.warn(`Socket not found for user: ${userIdStr}`);
+    const user = socket.user;
+    if (!user?._id || !user.department) {
+      console.warn(`Socket for user ${socket.id} has incomplete user data.`);
       return;
     }
 
-    const user = await User.findById(userIdStr).select("department role");
-    if (!user?.department) return;
+    const userIdStr = user._id.toString();
+    socket.join(userIdStr); // Join user-specific room
 
-    socket.join(userIdStr);
     const deptIdStr = user.department.toString();
-
-    socket.join(`department_${deptIdStr}`);
+    socket.join(`department_${deptIdStr}`); // Join department-wide room
 
     if (["Manager", "Admin", "SuperAdmin"].includes(user.role)) {
-      socket.join(`dept_managers_${deptIdStr}`);
+      socket.join(`dept_managers_${deptIdStr}`); // Join department manager room
     }
   } catch (error) {
     console.error("Socket room join error:", error.message);

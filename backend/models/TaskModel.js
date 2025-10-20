@@ -1,6 +1,5 @@
 import mongoose from "mongoose";
 import mongoosePaginate from "mongoose-paginate-v2";
-import { customDayjs } from "../utils/GetDateIntervals.js";
 import { deleteFromCloudinary } from "../utils/cloudinaryHelper.js";
 
 const taskSchema = new mongoose.Schema(
@@ -9,11 +8,14 @@ const taskSchema = new mongoose.Schema(
       type: String,
       required: [true, "Task title is required"],
       trim: true,
+      minlength: [2, "Title must be at least 2 characters"],
       maxlength: [100, "Title cannot exceed 100 characters"],
     },
     description: {
       type: String,
+      required: [true, "Task description is required"],
       trim: true,
+      minlength: [2, "Description must be at least 2 characters"],
       maxlength: [500, "Description cannot exceed 500 characters"],
     },
     status: {
@@ -23,36 +25,14 @@ const taskSchema = new mongoose.Schema(
     },
     location: {
       type: String,
+      required: [true, "Task location is required"],
       trim: true,
+      minlength: [2, "Location must be at least 2 characters"],
       maxlength: [100, "Location cannot exceed 100 characters"],
     },
     dueDate: {
       type: Date,
-      required: true,
-      validate: {
-        validator: function (value) {
-          const due = customDayjs(value);
-          const now = customDayjs();
-
-          if (this.isNew) {
-            // For new documents: due date must be in future
-            if (!due.isAfter(now)) {
-              throw new Error("Due date must be in the future.");
-            }
-          } else {
-            // For existing documents: due date must be after createdAt
-            if (!due.isSameOrAfter(this.createdAt)) {
-              throw new Error(
-                "Due date must be on or after task creation date."
-              );
-            }
-          }
-          return true;
-        },
-        message: function (props) {
-          return props.reason.message; // Forward thrown error message
-        },
-      },
+      required: [true, "Task due date is required"],
     },
     priority: {
       type: String,
@@ -62,19 +42,17 @@ const taskSchema = new mongoose.Schema(
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
-      required: true,
-      validate: {
-        validator: async function (userId) {
-          const user = await mongoose.model("User").findById(userId);
-          return user?.department?.equals(this.department);
-        },
-        message: "Creator must belong to task department",
-      },
+      required: [true, "Task created by is required"],
     },
     department: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Department",
-      required: true,
+      required: [true, "Task department is required"],
+    },
+    company: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Company",
+      required: [true, "Company reference is required"],
     },
   },
   {
@@ -96,7 +74,7 @@ const taskSchema = new mongoose.Schema(
   }
 );
 
-// Virtual for task activities (reverse populate)
+// Virtual for task activities
 taskSchema.virtual("activities", {
   ref: "TaskActivity",
   localField: "_id",
@@ -119,17 +97,15 @@ taskSchema.pre("save", async function (next) {
   next();
 });
 
-// Cascade delete notifications
+// Cascade delete
 taskSchema.pre("deleteOne", { document: true }, async function (next) {
   const session = this.$session();
   try {
-    // 1. Fetch all related TaskActivities
     const activities = await mongoose
       .model("TaskActivity")
       .find({ task: this._id })
       .session(session);
 
-    // 2. Delete Cloudinary attachments from TaskActivities
     const activityAttachmentIds = activities.flatMap((activity) =>
       activity.attachments.map((a) => a.public_id)
     );
@@ -138,13 +114,11 @@ taskSchema.pre("deleteOne", { document: true }, async function (next) {
       await deleteFromCloudinary(activityAttachmentIds, "raw");
     }
 
-    // 3. Bulk delete TaskActivities and their notifications
     await Promise.all([
       mongoose
         .model("TaskActivity")
         .deleteMany({ task: this._id })
         .session(session),
-
       mongoose
         .model("Notification")
         .deleteMany({
@@ -158,7 +132,7 @@ taskSchema.pre("deleteOne", { document: true }, async function (next) {
 
     next();
   } catch (err) {
-    next(new CustomError("Task deletion failed", 500));
+    next(err);
   }
 });
 
