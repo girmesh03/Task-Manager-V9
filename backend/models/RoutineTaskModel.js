@@ -1,10 +1,14 @@
 import mongoose from "mongoose";
 import mongoosePaginate from "mongoose-paginate-v2";
-import {customDayjs} from "../utils/GetDateIntervals.js";
 import { deleteFromCloudinary } from "../utils/cloudinaryHelper.js";
 
 const routineTaskSchema = new mongoose.Schema(
   {
+    company: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Company",
+      required: [true, "Company reference is required"],
+    },
     department: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Department",
@@ -14,23 +18,11 @@ const routineTaskSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: [true, "Task performer is required"],
-      validate: {
-        validator: async function (userId) {
-          const user = await mongoose.model("User").findById(userId);
-          return user?.department?.equals(this.department);
-        },
-        message: "Performer must belong to task department",
-      },
     },
     date: {
       type: Date,
       required: true,
-      default: () => customDayjs().toDate(),
-      validate: {
-        validator: (date) =>
-          customDayjs(date).isSameOrBefore(customDayjs().toDate()),
-        message: "Log date cannot be in the future",
-      },
+      default: Date.now,
     },
     performedTasks: [
       {
@@ -47,8 +39,8 @@ const routineTaskSchema = new mongoose.Schema(
     progress: {
       type: Number,
       default: 0,
-      min: 0,
-      max: 100,
+      min: [0, "Task progress cannot be less than 0"],
+      max: [100, "Task progress cannot exceed 100"],
     },
     attachments: [
       {
@@ -62,7 +54,7 @@ const routineTaskSchema = new mongoose.Schema(
         },
         uploadedAt: {
           type: Date,
-          default: () => customDayjs().toDate(),
+          default: Date.now,
         },
       },
     ],

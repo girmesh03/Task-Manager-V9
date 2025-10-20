@@ -36,6 +36,11 @@ const notificationSchema = new mongoose.Schema(
       ref: "Department",
       index: true,
     },
+    company: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Company",
+      required: [true, "Company reference is required"],
+    },
     linkedDocument: {
       type: mongoose.Schema.Types.ObjectId,
       refPath: "linkedDocumentType",

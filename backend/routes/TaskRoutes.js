@@ -14,20 +14,24 @@ import {
 import {
   verifyJWT,
   authorizeRoles,
+  verifyCompanyAccess,
   verifyDepartmentAccess,
 } from "../middlewares/authMiddleware.js";
 
 const router = express.Router();
 
-router.use(verifyJWT);
-
-// Create Task in a Department
-router.post(
-  "/department/:departmentId",
-  authorizeRoles("SuperAdmin", "Admin", "Manager"),
-  verifyDepartmentAccess,
-  createTask
-);
+// @route   POST /api/tasks
+// @desc    Create Task (AssignedTask or ProjectTask)
+// @access  Private (SuperAdmin, Manager)
+router
+  .route("/")
+  .post(
+    verifyJWT,
+    authorizeRoles("Manager", "SuperAdmin"),
+    verifyCompanyAccess,
+    verifyDepartmentAccess,
+    createTask
+  );
 
 // Get All Tasks of a Department
 router.get(

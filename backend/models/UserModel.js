@@ -2,7 +2,7 @@ import mongoose from "mongoose";
 import mongoosePaginate from "mongoose-paginate-v2";
 import bcrypt from "bcrypt";
 import crypto from "crypto";
-import {customDayjs} from "../utils/GetDateIntervals.js";
+import { customDayjs } from "../utils/GetDateIntervals.js";
 import { deleteFromCloudinary } from "../utils/cloudinaryHelper.js";
 import CustomError from "../errorHandler/CustomError.js";
 
@@ -30,14 +30,10 @@ const userSchema = new mongoose.Schema(
       lowercase: true,
       trim: true,
       maxlength: 50,
-      match: [/^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/, "Invalid email"],
-      validate: {
-        validator: async function (email) {
-          const user = await this.constructor.findOne({ email });
-          return !user || user._id.equals(this._id);
-        },
-        message: "Email already exists",
-      },
+      match: [
+        /^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/,
+        "Invalid email format",
+      ],
     },
     password: {
       type: String,
@@ -55,27 +51,17 @@ const userSchema = new mongoose.Schema(
       ref: "Department",
       required: [true, "User Department Id is required"],
     },
-    profilePicture: {
-      url: String,
-      public_id: String,
+    company: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Company",
+      required: [true, "Company reference is required"],
     },
-    isVerified: {
-      type: Boolean,
-      default: false,
-    },
-    isActive: {
-      type: Boolean,
-      default: true,
-    },
-    tokenVersion: {
-      type: Number,
-      default: 0,
-    },
-    pendingEmail: {
-      type: String,
-      trim: true,
-      lowercase: true,
-    },
+    profilePicture: { url: String, public_id: String },
+    isVerified: { type: Boolean, default: false },
+    isActive: { type: Boolean, default: true },
+    lastLogin: { type: Date },
+    tokenVersion: { type: Number, default: 0 },
+    pendingEmail: { type: String, trim: true, lowercase: true },
     emailChangeToken: { type: String, select: false },
     emailChangeTokenExpiry: { type: Date, select: false },
     verificationToken: { type: String, select: false },

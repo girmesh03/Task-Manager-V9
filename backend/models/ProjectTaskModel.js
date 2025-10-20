@@ -3,19 +3,22 @@ import Task from "./TaskModel.js";
 
 const projectTaskSchema = new mongoose.Schema(
   {
-    companyInfo: {
+    clientInfo: {
       name: {
         type: String,
         required: [true, "Company name is required"],
         trim: true,
       },
-      phoneNumber: {
+      phone: {
         type: String,
         required: [true, "Company phone number is required"],
         trim: true,
         minlength: [10, "Phone number must be at least 10 characters"],
         maxlength: [13, "Phone number cannot exceed 13 characters"],
-        match: [/^\+?[0-9\s]{10,13}$/, "Invalid phone number"],
+        validate: {
+          validator: (v) => /^(09\d{8}|\+2519\d{8})$/.test(v),
+          message: "Invalid phone number format for Ethiopia.",
+        },
       },
       address: {
         type: String,
@@ -28,5 +31,15 @@ const projectTaskSchema = new mongoose.Schema(
     toObject: Task.schema.options.toObject,
   }
 );
+
+// Pre-save hook to format the phone number
+projectTaskSchema.pre("save", async function (next) {
+  if (this.isModified("clientInfo.phone")) {
+    this.clientInfo.phone = this.clientInfo.phone.startsWith("09")
+      ? this.clientInfo.phone.replace("09", "+2519")
+      : this.clientInfo.phone;
+  }
+  next();
+});
 
 export default Task.discriminator("ProjectTask", projectTaskSchema);
