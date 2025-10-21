@@ -14,7 +14,7 @@ import {
   generateRefreshToken,
   getAccessTokenCookieOptions,
   getRefreshTokenCookieOptions,
-} from "../utils/generateTokens.js";
+} from "../utils/GenerateTokens.js";
 
 import { emitToUser } from "../utils/SocketEmitter.js";
 import { customDayjs } from "../utils/GetDateIntervals.js";
