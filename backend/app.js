@@ -2,7 +2,7 @@
 import express from "express"; // The main Express framework
 import cors from "cors"; // CORS middleware
 import cookieParser from "cookie-parser"; // Cookie parsing middleware
-import morgan from "morgan"; // HTTP request logging middleware
+// import morgan from "morgan"; // HTTP request logging middleware
 import helmet from "helmet"; // Security middleware for setting various HTTP headers
 import compression from "compression"; // Response compression middleware
 import mongoSanitize from "express-mongo-sanitize"; // Middleware to prevent MongoDB operator injection
@@ -43,7 +43,7 @@ app.use(compression());
 
 // --- Request Logging ---
 // Use morgan for logging incoming requests. 'dev' is concise for development, 'combined' is standard Apache style.
-app.use(morgan(process.env.NODE_ENV === "production" ? "combined" : "dev"));
+// app.use(morgan(process.env.NODE_ENV === "production" ? "combined" : "dev"));
 
 // --- API Routes ---
 // Mount the main API routes router.
